@@ -1,0 +1,14 @@
+---
+- name: Prepare
+  hosts: all
+  tasks:
+    - name: Install fapolicyd (left stopped) so the role writes its trust file
+      ansible.builtin.dnf:
+        name: fapolicyd
+        state: present
+
+    - name: Create a PHP page outside RPMs for fapolicyd to trust
+      ansible.builtin.copy:
+        dest: /srv/app/index.php
+        content: "<?php echo 'php-ok';\n"
+        mode: "0644"

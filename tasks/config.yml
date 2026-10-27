@@ -1,0 +1,89 @@
+---
+- name: Set the HTTP listener port
+  ansible.builtin.lineinfile:
+    path: /etc/httpd/conf/httpd.conf
+    regexp: '^Listen\s'
+    line: "Listen {{ apache_listen_http }}"
+  notify: Restart httpd
+
+- name: Set ServerAdmin
+  ansible.builtin.lineinfile:
+    path: /etc/httpd/conf/httpd.conf
+    regexp: '^ServerAdmin\s'
+    line: "ServerAdmin {{ apache_server_admin }}"
+  notify: Reload httpd
+
+- name: Find modules to disable
+  ansible.builtin.command: >-
+    grep -lE '^\s*LoadModule\s+({{ apache_disabled_modules | join('|') }})_module\b'
+    /etc/httpd/conf.modules.d/ -r --include=*.conf
+  register: __apache_module_files
+  changed_when: false
+  failed_when: __apache_module_files.rc > 1
+  check_mode: false
+  when: apache_disabled_modules | length > 0
+
+- name: Disable unneeded modules
+  ansible.builtin.replace:
+    path: "{{ item }}"
+    regexp: '^(\s*LoadModule\s+(?:{{ apache_disabled_modules | join("|") }})_module\b.*)$'
+    replace: '# Disabled by Ansible: \1'
+  loop: "{{ __apache_module_files.stdout_lines | default([]) }}"
+  notify: Restart httpd
+
+- name: Blank out package configuration files
+  ansible.builtin.copy:
+    dest: "/etc/httpd/conf.d/{{ item }}"
+    content: "# Disabled by Ansible (ansible-role-apache). Kept so package updates don't restore it.\n"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ apache_blank_confs }}"
+  notify: Reload httpd
+
+- name: Create the document root and the default vhost include directory
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: >-
+    {{ ([apache_document_root, '/etc/httpd/conf.d/default-ssl.d']
+        + apache_vhosts | map(attribute='document_root', default=apache_document_root) | list) | unique }}
+
+- name: Write the Apache configuration
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "/etc/httpd/conf.d/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    # Loaded in name order: hardening first, then the default TLS vhost.
+    - { src: hardening.conf.j2, dest: 00-hardening.conf }
+    - { src: ssl.conf.j2, dest: ssl.conf }
+    - { src: vhosts.conf.j2, dest: vhosts.conf }
+  notify: Reload httpd
+
+- name: Manage configuration snippets
+  ansible.builtin.copy:
+    dest: "/etc/httpd/conf.d/{{ item.name }}.conf"
+    content: "{{ item.content | default('') }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ apache_conf_snippets | rejectattr('state', 'defined') | list
+            + apache_conf_snippets | selectattr('state', 'defined') | selectattr('state', 'eq', 'present') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  notify: Reload httpd
+
+- name: Remove absent configuration snippets
+  ansible.builtin.file:
+    path: "/etc/httpd/conf.d/{{ item.name }}.conf"
+    state: absent
+  loop: "{{ apache_conf_snippets | selectattr('state', 'defined') | selectattr('state', 'eq', 'absent') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  notify: Reload httpd

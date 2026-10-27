@@ -1,0 +1,47 @@
+---
+# fapolicyd trusts files installed by RPM. Its default language rules also
+# stop php-fpm (or any interpreter) from opening PHP and other script files
+# that are not trusted, so web applications deployed outside RPMs must be
+# listed. The trust.d file holds each file's path, size and SHA-256; re-run
+# the role after updating the application so the hashes match again.
+- name: Check for fapolicyd
+  ansible.builtin.stat:
+    path: /usr/sbin/fapolicyd
+  register: __apache_fapolicyd_bin
+
+- name: Trust web content in fapolicyd
+  when: __apache_fapolicyd_bin.stat.exists
+  block:
+    - name: Collect sizes and checksums of files to trust
+      ansible.builtin.shell: |
+        set -o pipefail
+        find {{ (apache_fapolicyd_trusted_dirs + apache_fapolicyd_trusted_files) | map('quote') | join(' ') }} \
+          -type f ! -name '* *' -printf '%s %p\0' | sort -z -k2 |
+        while IFS=' ' read -r -d '' size path; do
+          printf '%s %s %s\n' "$path" "$size" "$(sha256sum "$path" | cut -d' ' -f1)"
+        done
+      args:
+        executable: /bin/bash
+      register: __apache_fapolicyd_entries
+      changed_when: false
+      check_mode: false
+      when: (apache_fapolicyd_trusted_dirs + apache_fapolicyd_trusted_files) | length > 0
+
+    - name: Write the fapolicyd trust file
+      ansible.builtin.copy:
+        dest: "/etc/fapolicyd/trust.d/{{ apache_fapolicyd_trust_file }}"
+        content: |
+          # Managed by Ansible (ansible-role-apache)
+          {{ __apache_fapolicyd_entries.stdout }}
+        owner: root
+        group: fapolicyd
+        mode: "0644"
+      when: (apache_fapolicyd_trusted_dirs + apache_fapolicyd_trusted_files) | length > 0
+      notify: Update fapolicyd trust
+
+    - name: Remove the fapolicyd trust file when nothing needs trusting
+      ansible.builtin.file:
+        path: "/etc/fapolicyd/trust.d/{{ apache_fapolicyd_trust_file }}"
+        state: absent
+      when: (apache_fapolicyd_trusted_dirs + apache_fapolicyd_trusted_files) | length == 0
+      notify: Update fapolicyd trust

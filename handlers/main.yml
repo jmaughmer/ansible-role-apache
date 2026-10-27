@@ -1,0 +1,35 @@
+---
+# Other roles in the same play (phpMyAdmin, phpIPAM...) can notify these by
+# their listen names after dropping files into /etc/httpd/conf.d.
+- name: Restart httpd
+  ansible.builtin.systemd_service:
+    name: httpd
+    state: restarted
+  when: apache_service_state == 'started'
+  listen: restart httpd
+
+- name: Reload httpd
+  ansible.builtin.systemd_service:
+    name: httpd
+    state: reloaded
+  when: apache_service_state == 'started'
+  listen: reload httpd
+
+- name: Restart php-fpm
+  ansible.builtin.systemd_service:
+    name: php-fpm
+    state: restarted
+  when:
+    - apache_php_enabled | bool
+    - apache_service_state == 'started'
+  listen: restart php-fpm
+
+- name: Update fapolicyd trust
+  ansible.builtin.command: fapolicyd-cli --update
+  changed_when: true
+  # fapolicyd reads trust.d on start, so there is nothing to do while stopped.
+  failed_when: false
+
+- name: Warn about crypto policy reboot
+  ansible.builtin.debug:
+    msg: The system crypto policy changed. Reboot so every process picks it up.

@@ -1,0 +1,38 @@
+---
+- name: Validate role variables
+  ansible.builtin.import_tasks: assert.yml
+  tags: [apache, apache_assert]
+
+- name: Install Apache
+  ansible.builtin.import_tasks: install.yml
+  tags: [apache, apache_install]
+
+- name: Configure TLS certificates
+  ansible.builtin.import_tasks: tls.yml
+  tags: [apache, apache_tls]
+
+- name: Configure Apache
+  ansible.builtin.import_tasks: config.yml
+  tags: [apache, apache_config]
+
+- name: Configure PHP
+  ansible.builtin.import_tasks: php.yml
+  when: apache_php_enabled | bool
+  tags: [apache, apache_php]
+
+- name: Configure SELinux and FIPS settings
+  ansible.builtin.import_tasks: security.yml
+  tags: [apache, apache_security, apache_selinux, apache_fips]
+
+- name: Configure fapolicyd trust
+  ansible.builtin.import_tasks: fapolicyd.yml
+  when: apache_fapolicyd_manage | bool
+  tags: [apache, apache_security, apache_fapolicyd]
+
+- name: Configure the firewall
+  ansible.builtin.import_tasks: firewall.yml
+  tags: [apache, apache_firewall]
+
+- name: Manage services
+  ansible.builtin.import_tasks: service.yml
+  tags: [apache, apache_service]

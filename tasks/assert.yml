@@ -1,0 +1,47 @@
+---
+- name: Assert supported platform
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] == 'RedHat'
+      - ansible_facts['distribution_major_version'] in __apache_supported_major_versions
+    fail_msg: >-
+      This role supports RHEL-compatible systems 8, 9 and 10, not
+      {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}.
+    quiet: true
+
+- name: Assert TLS settings
+  ansible.builtin.assert:
+    that:
+      - apache_tls_source in ['selfsigned', 'provided']
+      - >-
+        apache_tls_source != 'provided' or
+        ((apache_tls_cert_content | length > 0 or apache_tls_cert_src | length > 0) and
+         (apache_tls_key_content | length > 0 or apache_tls_key_src | length > 0))
+    fail_msg: >-
+      apache_tls_source must be "selfsigned" or "provided". With "provided", set
+      apache_tls_cert_content or apache_tls_cert_src, and apache_tls_key_content
+      or apache_tls_key_src (the CA is optional).
+    quiet: true
+
+- name: Assert virtual hosts
+  ansible.builtin.assert:
+    that:
+      - apache_vhosts | selectattr('server_name', 'undefined') | list | length == 0
+      - apache_vhosts | map(attribute='server_name') | list | unique | length == apache_vhosts | length
+    fail_msg: Every entry in apache_vhosts needs a unique server_name.
+    quiet: true
+
+- name: Assert configuration snippets
+  ansible.builtin.assert:
+    that: apache_conf_snippets | selectattr('name', 'undefined') | list | length == 0
+    fail_msg: Every entry in apache_conf_snippets needs a name.
+    quiet: true
+
+- name: Assert FIPS mode is enabled
+  ansible.builtin.assert:
+    that: ansible_facts['fips'] | default(false) | bool
+    fail_msg: >-
+      apache_fips_required is set but the host is not in FIPS mode. Enable it with
+      "fips-mode-setup --enable" (EL8/EL9) or install with fips=1 (EL10), then reboot.
+    quiet: true
+  when: apache_fips_required | bool
