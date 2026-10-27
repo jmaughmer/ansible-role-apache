@@ -1,0 +1,16 @@
+---
+- name: Gather service facts
+  ansible.builtin.service_facts:
+
+- name: Open firewalld for Apache
+  ansible.posix.firewalld:
+    port: "{{ item }}/tcp"
+    zone: "{{ apache_firewalld_zone }}"
+    permanent: true
+    immediate: true
+    state: enabled
+  loop: "{{ [apache_listen_http, apache_listen_https] }}"
+  when:
+    - apache_firewalld_manage | bool
+    - ansible_facts.services['firewalld.service'] is defined
+    - ansible_facts.services['firewalld.service'].state == 'running'

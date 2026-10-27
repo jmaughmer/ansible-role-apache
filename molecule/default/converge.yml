@@ -1,0 +1,22 @@
+---
+- name: Converge
+  hosts: all
+  vars:
+    apache_php_enabled: true
+    apache_php_packages: [php-mysqlnd]
+    apache_conf_snippets:
+      - name: molecule-app
+        content: |
+          Alias /app /srv/app
+          <Directory /srv/app>
+              Require all granted
+          </Directory>
+    apache_vhosts:
+      - server_name: app.example.test
+        document_root: /srv/app
+    # fapolicyd is installed (not started) by prepare.yml to test the trust file.
+    apache_fapolicyd_trusted_dirs: [/srv/app]
+  tasks:
+    - name: Include the role
+      ansible.builtin.include_role:
+        name: ansible-role-apache
