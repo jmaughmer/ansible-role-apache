@@ -114,6 +114,29 @@ scripts/test.sh            # lint, default (EL9 + EL10), el8
 
 The repository directory must be named `ansible-role-apache`. SELinux, FIPS and firewalld can't be exercised in containers.
 
+### One-time AlmaLinux 10 WSL setup
+
+1. Turn on systemd in the distro. Put this in `/etc/wsl.conf`, run `wsl --shutdown` from Windows, then reopen the distro:
+
+   ```ini
+   [boot]
+   systemd=true
+   ```
+
+2. Install the tools: `sudo dnf install -y podman python3 python3-pip git`.
+3. Set up rootless podman for your user:
+
+   ```bash
+   grep -q "^$USER:" /etc/subuid || sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 "$USER"
+   sudo loginctl enable-linger "$USER"
+   podman system migrate
+   podman info          # should succeed and show cgroupVersion: v2
+   ```
+
+4. Clone the repositories side by side under your Linux home directory (for example `~/src/`), not under `/mnt/c`. The Windows mount is slow and does not keep Linux file permissions.
+
+`scripts/test.sh` checks for systemd, cgroup v2, subordinate IDs and a user session before it starts, and prints the fix for anything missing. If rootless systemd containers still won't start, run `sudo scripts/test.sh` to use rootful podman.
+
 ## License
 
 MIT
