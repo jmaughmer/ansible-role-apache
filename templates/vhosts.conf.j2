@@ -1,0 +1,32 @@
+# {{ ansible_managed }}
+{% for vhost in apache_vhosts %}
+
+<VirtualHost *:{{ apache_listen_https }}>
+    ServerName {{ vhost.server_name }}
+{% for alias in vhost.server_aliases | default([]) %}
+    ServerAlias {{ alias }}
+{% endfor %}
+    DocumentRoot "{{ vhost.document_root | default(apache_document_root) }}"
+
+    ErrorLog logs/{{ vhost.server_name }}_ssl_error_log
+    CustomLog logs/{{ vhost.server_name }}_ssl_access_log combined_tls
+
+    SSLEngine on
+    SSLCertificateFile {{ vhost.tls_cert_path | default(apache_tls_cert_path) }}
+    SSLCertificateKeyFile {{ vhost.tls_key_path | default(apache_tls_key_path) }}
+
+    <IfModule headers_module>
+        Header always set Strict-Transport-Security "max-age={{ apache_hsts_max_age }}; includeSubDomains"
+    </IfModule>
+
+    <Directory "{{ vhost.document_root | default(apache_document_root) }}">
+        Options None
+        AllowOverride None
+        Require all granted
+    </Directory>
+{% if vhost.extra is defined %}
+
+    {{ vhost.extra | indent(4) }}
+{% endif %}
+</VirtualHost>
+{% endfor %}

@@ -1,0 +1,80 @@
+---
+# ---------------------------------------------------------------------------
+# FIPS
+# ---------------------------------------------------------------------------
+- name: Read the system crypto policy
+  ansible.builtin.command: update-crypto-policies --show
+  register: __apache_crypto_policy
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Set the system crypto policy
+  ansible.builtin.command: "update-crypto-policies --set {{ apache_crypto_policy }}"
+  when:
+    - apache_crypto_policy | length > 0
+    - (__apache_crypto_policy.stdout | default('') | trim) != apache_crypto_policy
+  changed_when: true
+  notify:
+    - Restart httpd
+    - Warn about crypto policy reboot
+
+# ---------------------------------------------------------------------------
+# SELinux
+# ---------------------------------------------------------------------------
+- name: Configure SELinux for Apache
+  when:
+    - apache_selinux_manage | bool
+    - ansible_facts['selinux']['status'] | default('disabled') == 'enabled'
+  block:
+    - name: Install SELinux management tools
+      ansible.builtin.dnf:
+        name:
+          - policycoreutils-python-utils
+          - python3-libselinux
+          - python3-policycoreutils
+        state: present
+
+    - name: Label non-standard listener ports
+      community.general.seport:
+        ports: "{{ item }}"
+        proto: tcp
+        setype: http_port_t
+        state: present
+      loop: "{{ [apache_listen_http, apache_listen_https] | map('int') | difference(__apache_selinux_default_ports) }}"
+      notify: Restart httpd
+
+    - name: Label relocated document roots
+      community.general.sefcontext:
+        target: "{{ item }}(/.*)?"
+        setype: httpd_sys_content_t
+        state: present
+      loop: >-
+        {{ ([apache_document_root] + apache_vhosts | map(attribute='document_root', default=apache_document_root) | list)
+           | unique | reject('match', '^/var/www(/|$)') }}
+
+    - name: Add custom file contexts
+      community.general.sefcontext:
+        target: "{{ item.target }}"
+        setype: "{{ item.setype }}"
+        ftype: "{{ item.ftype | default('a') }}"
+        state: "{{ item.state | default('present') }}"
+      loop: "{{ apache_selinux_fcontexts }}"
+      loop_control:
+        label: "{{ item.target }}"
+
+    - name: Restore file contexts
+      ansible.builtin.command: "restorecon -R -v {{ __apache_selinux_paths | join(' ') }}"
+      register: __apache_restorecon
+      changed_when: __apache_restorecon.stdout | length > 0
+      vars:
+        __apache_selinux_paths: >-
+          {{ ([apache_document_root, apache_tls_dir]
+              + (apache_vhosts | map(attribute='document_root', default=apache_document_root) | list)) | unique }}
+
+    - name: Set SELinux booleans
+      ansible.posix.seboolean:
+        name: "{{ item.key }}"
+        state: "{{ item.value | bool }}"
+        persistent: true
+      loop: "{{ apache_selinux_booleans | dict2items }}"

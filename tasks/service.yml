@@ -1,0 +1,22 @@
+---
+- name: Check the Apache configuration
+  ansible.builtin.command: httpd -t
+  register: __apache_configtest
+  changed_when: false
+  check_mode: false
+
+- name: Enable and start php-fpm
+  ansible.builtin.systemd_service:
+    name: php-fpm
+    state: "{{ apache_service_state }}"
+    enabled: "{{ apache_service_enabled }}"
+  when: apache_php_enabled | bool
+
+- name: Enable and start httpd
+  ansible.builtin.systemd_service:
+    name: httpd
+    state: "{{ apache_service_state }}"
+    enabled: "{{ apache_service_enabled }}"
+
+- name: Flush handlers so new configuration is active
+  ansible.builtin.meta: flush_handlers
