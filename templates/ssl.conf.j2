@@ -1,0 +1,37 @@
+# {{ ansible_managed }}
+# Replaces the ssl.conf shipped with mod_ssl.
+Listen {{ apache_listen_https }} https
+
+SSLPassPhraseDialog exec:/usr/libexec/httpd-ssl-pass-dialog
+SSLSessionCache shmcb:/run/httpd/sslcache(512000)
+SSLSessionCacheTimeout 300
+SSLCryptoDevice builtin
+
+SSLProtocol {{ apache_tls_protocol }}
+SSLProxyProtocol {{ apache_tls_protocol }}
+SSLCipherSuite {{ apache_tls_cipher_suite }}
+SSLProxyCipherSuite {{ apache_tls_cipher_suite }}
+SSLHonorCipherOrder on
+SSLCompression off
+SSLSessionTickets off
+
+# Default TLS virtual host. It is the first *:443 vhost (ssl.conf sorts before
+# vhosts.conf), so it answers requests for names no other vhost claims.
+<VirtualHost *:{{ apache_listen_https }}>
+    ServerName {{ apache_server_name }}
+    DocumentRoot "{{ apache_document_root }}"
+
+    ErrorLog logs/ssl_error_log
+    CustomLog logs/ssl_access_log combined_tls
+
+    SSLEngine on
+    SSLCertificateFile {{ apache_tls_cert_path }}
+    SSLCertificateKeyFile {{ apache_tls_key_path }}
+
+    <IfModule headers_module>
+        Header always set Strict-Transport-Security "max-age={{ apache_hsts_max_age }}; includeSubDomains"
+    </IfModule>
+
+    # Applications add Alias/Location blocks to this vhost here.
+    IncludeOptional conf.d/default-ssl.d/*.conf
+</VirtualHost>

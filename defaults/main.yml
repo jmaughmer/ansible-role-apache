@@ -1,0 +1,157 @@
+---
+# ---------------------------------------------------------------------------
+# Packages and service
+# ---------------------------------------------------------------------------
+# httpd and mod_ssl come from the distribution's AppStream repository.
+apache_packages: [httpd, mod_ssl]
+apache_extra_packages: []
+apache_service_enabled: true
+apache_service_state: started
+
+# ---------------------------------------------------------------------------
+# Server
+# ---------------------------------------------------------------------------
+apache_server_name: "{{ ansible_facts['fqdn'] }}"
+apache_server_admin: root@localhost
+apache_listen_http: 80
+apache_listen_https: 443
+apache_document_root: /var/www/html
+# Send every plain HTTP request to HTTPS.
+apache_http_redirect: true
+apache_log_level: warn
+
+# Extra name-based TLS virtual hosts:
+# - server_name: app.example.com
+#   server_aliases: [app]
+#   document_root: /var/www/app
+#   tls_cert_path: /etc/pki/httpd/app.crt   # optional, defaults to the main cert
+#   tls_key_path: /etc/pki/httpd/app.key
+#   extra: |
+#     ProxyPass /api http://127.0.0.1:8080/
+apache_vhosts: []
+
+# Configuration snippets written to /etc/httpd/conf.d/<name>.conf.
+# - name: myapp
+#   content: |
+#     Alias /myapp /usr/share/myapp
+#   state: present
+apache_conf_snippets: []
+
+# ---------------------------------------------------------------------------
+# Hardening (DISA Apache Server 2.4 UNIX STIG)
+# ---------------------------------------------------------------------------
+apache_stig_enabled: true
+apache_server_tokens: Prod
+apache_server_signature: "Off"
+apache_trace_enable: "Off"
+apache_file_etag: None
+apache_timeout: 60
+apache_keepalive_timeout: 5
+apache_max_keepalive_requests: 100
+apache_limit_request_body: 10485760
+apache_limit_request_fields: 100
+apache_limit_request_field_size: 8190
+apache_limit_request_line: 8190
+apache_request_read_timeout: header=20-40,MinRate=500 body=20,MinRate=500
+# Modules to switch off (their LoadModule lines are commented out).
+apache_disabled_modules:
+  - autoindex
+  - userdir
+  - info
+  - status
+  - dav
+  - dav_fs
+  - dav_lock
+  - cgi
+  - cgid
+  - lua
+# Package config files to blank out (kept, so updates don't restore them).
+apache_blank_confs: [welcome.conf, autoindex.conf, userdir.conf]
+apache_security_headers:
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: "geolocation=(), microphone=(), camera=()"
+apache_hsts_max_age: 31536000
+# Add HttpOnly and Secure to cookies that lack them.
+apache_cookie_flags: "{{ apache_stig_enabled }}"
+
+# ---------------------------------------------------------------------------
+# TLS
+# ---------------------------------------------------------------------------
+# selfsigned: the role creates a private CA and a server certificate.
+# provided: you supply the certificate, key and CA (content or files).
+apache_tls_source: selfsigned
+apache_tls_dir: /etc/pki/httpd
+apache_tls_cert_path: "{{ apache_tls_dir }}/server.crt"
+apache_tls_key_path: "{{ apache_tls_dir }}/server.key"
+apache_tls_ca_path: "{{ apache_tls_dir }}/ca.crt"
+apache_tls_protocol: all -SSLv3 -TLSv1 -TLSv1.1
+# PROFILE=SYSTEM follows the system crypto policy, which is what you want under FIPS.
+apache_tls_cipher_suite: PROFILE=SYSTEM
+
+apache_tls_cert_content: ""
+apache_tls_key_content: ""
+apache_tls_ca_content: ""
+apache_tls_cert_src: ""
+apache_tls_key_src: ""
+apache_tls_ca_src: ""
+
+apache_tls_selfsigned_common_name: "{{ apache_server_name }}"
+apache_tls_selfsigned_subject_alt_names: >-
+  {{ ['DNS:' ~ apache_server_name, 'DNS:' ~ ansible_facts['hostname'], 'DNS:localhost', 'IP:127.0.0.1']
+     + (apache_vhosts | map(attribute='server_name') | map('regex_replace', '^', 'DNS:') | list) | unique }}
+apache_tls_selfsigned_key_type: RSA
+apache_tls_selfsigned_key_size: 3072
+apache_tls_selfsigned_digest: sha256
+apache_tls_selfsigned_ca_days: 3650
+apache_tls_selfsigned_days: 825
+apache_tls_selfsigned_renew_days: 30
+
+# ---------------------------------------------------------------------------
+# PHP (php-fpm)
+# ---------------------------------------------------------------------------
+apache_php_enabled: false
+# AppStream module stream on EL8/EL9; "" uses the per-release default from
+# vars/main.yml (8.2 on EL8/EL9, the stock PHP on EL10).
+apache_php_module_stream: ""
+apache_php_packages: []
+apache_php_timezone: UTC
+apache_php_memory_limit: 256M
+apache_php_max_execution_time: 300
+apache_php_upload_max_filesize: 64M
+apache_php_post_max_size: 64M
+# Extra php.ini settings for the hardening drop-in.
+apache_php_ini: {}
+
+# ---------------------------------------------------------------------------
+# Firewall
+# ---------------------------------------------------------------------------
+apache_firewalld_manage: true
+apache_firewalld_zone: public
+
+# ---------------------------------------------------------------------------
+# SELinux
+# ---------------------------------------------------------------------------
+apache_selinux_manage: true
+# e.g. { httpd_can_network_connect_db: true }
+apache_selinux_booleans: {}
+# Extra contexts: [{ target: "/srv/app/data(/.*)?", setype: httpd_sys_rw_content_t }]
+apache_selinux_fcontexts: []
+
+# ---------------------------------------------------------------------------
+# fapolicyd
+# ---------------------------------------------------------------------------
+# fapolicyd trusts RPM files only, and its default rules stop php-fpm from
+# opening PHP files it does not trust. List web content you deploy outside
+# RPMs (application directories, edited config files) to trust it.
+apache_fapolicyd_manage: true
+apache_fapolicyd_trust_file: apache
+apache_fapolicyd_trusted_dirs: []
+apache_fapolicyd_trusted_files: []
+
+# ---------------------------------------------------------------------------
+# FIPS
+# ---------------------------------------------------------------------------
+apache_fips_required: false
+apache_crypto_policy: ""

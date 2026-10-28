@@ -1,0 +1,15 @@
+---
+__apache_supported_major_versions: ["8", "9", "10"]
+
+__apache_php_default_streams:
+  "8": "8.2"
+  "9": "8.2"
+  "10": ""
+__apache_php_stream: >-
+  {{ apache_php_module_stream if apache_php_module_stream | length > 0
+     else __apache_php_default_streams[ansible_facts['distribution_major_version']] }}
+__apache_php_base_packages: [php-fpm, php-cli, php-common]
+
+__apache_tls_packages: [python3-cryptography]
+
+__apache_selinux_default_ports: [80, 81, 443, 488, 8008, 8009, 8443, 9000]

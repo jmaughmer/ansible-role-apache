@@ -1,0 +1,67 @@
+# {{ ansible_managed }}
+ServerName {{ apache_server_name }}
+ServerTokens {{ apache_server_tokens }}
+ServerSignature {{ apache_server_signature }}
+TraceEnable {{ apache_trace_enable }}
+FileETag {{ apache_file_etag }}
+LogLevel {{ apache_log_level }}
+
+Timeout {{ apache_timeout }}
+KeepAlive On
+KeepAliveTimeout {{ apache_keepalive_timeout }}
+MaxKeepAliveRequests {{ apache_max_keepalive_requests }}
+{% if apache_stig_enabled | bool %}
+LimitRequestBody {{ apache_limit_request_body }}
+LimitRequestFields {{ apache_limit_request_fields }}
+LimitRequestFieldSize {{ apache_limit_request_field_size }}
+LimitRequestLine {{ apache_limit_request_line }}
+<IfModule reqtimeout_module>
+    RequestReadTimeout {{ apache_request_read_timeout }}
+</IfModule>
+{% endif %}
+
+# Log TLS details and the time taken with each request.
+LogFormat "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\" %D %{SSL_PROTOCOL}x %{SSL_CIPHER}x" combined_tls
+
+<IfModule headers_module>
+{% for name, value in apache_security_headers | dictsort %}
+    Header set {{ name }} "{{ value }}"
+{% endfor %}
+    Header always unset X-Powered-By
+    Header unset X-Powered-By
+{% if apache_cookie_flags | bool %}
+    Header always edit* Set-Cookie "^((?!.*;\s*HttpOnly).*)$" "$1; HttpOnly"
+    Header always edit* Set-Cookie "^((?!.*;\s*Secure).*)$" "$1; Secure"
+    Header edit* Set-Cookie "^((?!.*;\s*HttpOnly).*)$" "$1; HttpOnly"
+    Header edit* Set-Cookie "^((?!.*;\s*Secure).*)$" "$1; Secure"
+{% endif %}
+</IfModule>
+
+<Directory />
+    Options None
+    AllowOverride None
+    Require all denied
+</Directory>
+
+<Directory "{{ apache_document_root }}">
+    Options None
+    AllowOverride None
+    Require all granted
+</Directory>
+
+# Don't serve version control data, backups or dot files.
+<FilesMatch "^\.|~$|\.(bak|old|orig|swp)$">
+    Require all denied
+</FilesMatch>
+<DirectoryMatch "/\.(git|svn|hg)">
+    Require all denied
+</DirectoryMatch>
+{% if apache_http_redirect | bool %}
+
+# Plain HTTP only redirects to HTTPS.
+<VirtualHost *:{{ apache_listen_http }}>
+    ServerName {{ apache_server_name }}
+    RewriteEngine On
+    RewriteRule ^ https://%{HTTP_HOST}{{ '' if apache_listen_https | int == 443 else ':' ~ apache_listen_https }}%{REQUEST_URI} [R=301,L]
+</VirtualHost>
+{% endif %}

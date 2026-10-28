@@ -1,0 +1,11 @@
+---
+# The php-fpm package ships /etc/httpd/conf.d/php.conf, which hands *.php
+# to the www pool's socket, so Apache needs no extra wiring.
+- name: Write the PHP hardening settings
+  ansible.builtin.template:
+    src: php-hardening.ini.j2
+    dest: /etc/php.d/99-hardening.ini
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart php-fpm

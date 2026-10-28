@@ -1,0 +1,74 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Collect service state
+      ansible.builtin.service_facts:
+
+    - name: Assert httpd and php-fpm are running
+      ansible.builtin.assert:
+        that: ansible_facts.services[item ~ '.service'].state == 'running'
+        fail_msg: "{{ item }} is not running"
+      loop: [httpd, php-fpm]
+
+    - name: HTTP redirects to HTTPS
+      ansible.builtin.uri:
+        url: http://127.0.0.1/
+        follow_redirects: none
+        status_code: 301
+      register: redirect
+      failed_when: redirect.status != 301 or not redirect.location.startswith('https://')
+
+    - name: PHP runs through php-fpm with hardened headers
+      ansible.builtin.uri:
+        url: https://127.0.0.1/app/index.php
+        validate_certs: false
+        return_content: true
+      register: php
+
+    - name: Assert response content and headers
+      ansible.builtin.assert:
+        that:
+          - php.content == 'php-ok'
+          - php.server == 'Apache'
+          - php.x_powered_by is not defined
+          - php.x_content_type_options == 'nosniff'
+          - php.strict_transport_security is defined
+        fail_msg: "{{ php }}"
+
+    - name: Name-based vhost answers with a certificate the CA verifies  # noqa: command-instead-of-module
+      ansible.builtin.command: >-
+        curl -sS --fail --cacert /etc/pki/httpd/ca.crt --resolve app.example.test:443:127.0.0.1
+        https://app.example.test/index.php
+      register: vhost
+      changed_when: false
+      failed_when: vhost.rc != 0 or vhost.stdout != 'php-ok'
+
+    - name: TRACE is refused
+      ansible.builtin.uri:
+        url: https://127.0.0.1/
+        method: TRACE
+        validate_certs: false
+        status_code: 405
+
+    - name: TLS 1.1 is refused  # noqa: command-instead-of-module
+      ansible.builtin.command: curl -sSk --tls-max 1.1 https://127.0.0.1/
+      register: tls11
+      changed_when: false
+      failed_when: tls11.rc == 0
+
+    - name: Directory listings are off
+      ansible.builtin.command: grep -rE '^\s*LoadModule\s+autoindex_module' /etc/httpd/conf.modules.d/
+      register: autoindex
+      changed_when: false
+      failed_when: autoindex.rc == 0
+
+    - name: Read the fapolicyd trust file
+      ansible.builtin.slurp:
+        src: /etc/fapolicyd/trust.d/apache
+      register: trust
+
+    - name: Assert the PHP page is trusted
+      ansible.builtin.assert:
+        that: "'/srv/app/index.php ' in (trust.content | b64decode)"

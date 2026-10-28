@@ -1,0 +1,20 @@
+; {{ ansible_managed }}
+expose_php = Off
+display_errors = Off
+display_startup_errors = Off
+log_errors = On
+allow_url_include = Off
+date.timezone = {{ apache_php_timezone }}
+memory_limit = {{ apache_php_memory_limit }}
+max_execution_time = {{ apache_php_max_execution_time }}
+upload_max_filesize = {{ apache_php_upload_max_filesize }}
+post_max_size = {{ apache_php_post_max_size }}
+
+session.use_strict_mode = 1
+session.use_only_cookies = 1
+session.cookie_httponly = 1
+session.cookie_secure = 1
+session.cookie_samesite = Strict
+{% for key, value in apache_php_ini | dictsort %}
+{{ key }} = {{ value }}
+{% endfor %}
