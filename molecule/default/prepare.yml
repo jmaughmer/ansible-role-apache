@@ -7,8 +7,25 @@
         name: fapolicyd
         state: present
 
+    - name: Create the directory for the PHP page
+      ansible.builtin.file:
+        path: /srv/app
+        state: directory
+        mode: "0755"
+
     - name: Create a PHP page outside RPMs for fapolicyd to trust
       ansible.builtin.copy:
         dest: /srv/app/index.php
         content: "<?php echo 'php-ok';\n"
+        mode: "0644"
+
+    - name: Create a PHP page that sets cookies with and without the flags
+      ansible.builtin.copy:
+        dest: /srv/app/cookies.php
+        content: |
+          <?php
+          header('Set-Cookie: plain=1; path=/', false);
+          header('Set-Cookie: lower=1; path=/; secure; HttpOnly', false);
+          header('Set-Cookie: upper=1; path=/; Secure; HttpOnly', false);
+          echo 'cookies-ok';
         mode: "0644"

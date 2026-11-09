@@ -35,7 +35,23 @@
           - php.x_powered_by is not defined
           - php.x_content_type_options == 'nosniff'
           - php.strict_transport_security is defined
-        fail_msg: "{{ php }}"
+        fail_msg: "{{ php | to_json }}"
+
+    # "Header edit*" in the cookie flag rules used to segfault the worker here.
+    - name: Pages that set cookies are served
+      ansible.builtin.uri:
+        url: https://127.0.0.1/app/cookies.php
+        validate_certs: false
+        return_content: true
+      register: cookies
+
+    - name: Assert every cookie has each flag exactly once
+      ansible.builtin.assert:
+        that:
+          - cookies.content == 'cookies-ok'
+          - cookies.set_cookie | lower | regex_findall('secure') | length == 3
+          - cookies.set_cookie | lower | regex_findall('httponly') | length == 3
+        fail_msg: "{{ cookies.set_cookie | default('no Set-Cookie header') }}"
 
     - name: Name-based vhost answers with a certificate the CA verifies  # noqa: command-instead-of-module
       ansible.builtin.command: >-

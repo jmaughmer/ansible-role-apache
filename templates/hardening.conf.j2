@@ -30,10 +30,12 @@ LogFormat "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\" %D %{SSL
     Header always unset X-Powered-By
     Header unset X-Powered-By
 {% if apache_cookie_flags | bool %}
-    Header always edit* Set-Cookie "^((?!.*;\s*HttpOnly).*)$" "$1; HttpOnly"
-    Header always edit* Set-Cookie "^((?!.*;\s*Secure).*)$" "$1; Secure"
-    Header edit* Set-Cookie "^((?!.*;\s*HttpOnly).*)$" "$1; HttpOnly"
-    Header edit* Set-Cookie "^((?!.*;\s*Secure).*)$" "$1; Secure"
+    # "edit", not "edit*": these patterns also match the empty remainder after
+    # the first match, and edit* then recurses until the worker segfaults.
+    Header always edit Set-Cookie "^((?!.*;\s*(?i)HttpOnly).*)$" "$1; HttpOnly"
+    Header always edit Set-Cookie "^((?!.*;\s*(?i)Secure).*)$" "$1; Secure"
+    Header edit Set-Cookie "^((?!.*;\s*(?i)HttpOnly).*)$" "$1; HttpOnly"
+    Header edit Set-Cookie "^((?!.*;\s*(?i)Secure).*)$" "$1; Secure"
 {% endif %}
 </IfModule>
 
