@@ -11,5 +11,31 @@ __apache_php_stream: >-
 __apache_php_base_packages: [php-fpm, php-cli, php-common]
 
 __apache_tls_packages: [python3-cryptography]
+__apache_letsencrypt_packages: [certbot]
+
+# Supplied certificates. Only the names are read here, so nothing below can
+# carry a private key.
+__apache_ssl_certificate_names: "{{ ssl_certificates | map(attribute='name', default='') | list }}"
+# The name becomes a file name.
+__apache_ssl_certificate_name_pattern: '^(?!.*\.\.)[A-Za-z0-9_*][A-Za-z0-9._*-]*$'
+__apache_tls_default_certificate: >-
+  {{ apache_tls_default_certificate if apache_tls_default_certificate | length > 0
+     else (apache_server_name if apache_server_name in __apache_ssl_certificate_names
+           else __apache_ssl_certificate_names | first | default('')) }}
+__apache_vhost_certificates: "{{ apache_vhosts | selectattr('ssl_certificate', 'defined') | map(attribute='ssl_certificate') | list }}"
+
+# Let's Encrypt. certbot names the certificate after the first domain.
+__apache_letsencrypt_name: "{{ apache_letsencrypt_domains | first }}"
+__apache_letsencrypt_live_dir: "/etc/letsencrypt/live/{{ __apache_letsencrypt_name }}"
+__apache_certbot_argv: >-
+  {{ ['certbot', 'certonly', '--webroot', '--webroot-path', apache_letsencrypt_webroot,
+      '--non-interactive', '--agree-tos', '--no-eff-email', '--email', apache_letsencrypt_email,
+      '--server', apache_letsencrypt_server, '--cert-name', __apache_letsencrypt_name,
+      '--domains', apache_letsencrypt_domains | join(','), '--keep-until-expiring', '--expand',
+      '--key-type', apache_letsencrypt_key_type]
+     + (['--rsa-key-size', apache_letsencrypt_rsa_key_size | string] if apache_letsencrypt_key_type == 'rsa'
+        else ['--elliptic-curve', apache_letsencrypt_elliptic_curve])
+     + ['--deploy-hook', 'systemctl reload httpd']
+     + apache_letsencrypt_extra_args }}
 
 __apache_selinux_default_ports: [80, 81, 443, 488, 8008, 8009, 8443, 9000]

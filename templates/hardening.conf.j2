@@ -58,12 +58,26 @@ LogFormat "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\" %D %{SSL
 <DirectoryMatch "/\.(git|svn|hg)">
     Require all denied
 </DirectoryMatch>
+{% if apache_tls_source == 'letsencrypt' %}
+
+# Let's Encrypt HTTP-01 challenges, answered on every virtual host.
+Alias /.well-known/acme-challenge/ "{{ apache_letsencrypt_webroot }}/.well-known/acme-challenge/"
+<Directory "{{ apache_letsencrypt_webroot }}/.well-known/acme-challenge">
+    Options None
+    AllowOverride None
+    ForceType text/plain
+    Require all granted
+</Directory>
+{% endif %}
 {% if apache_http_redirect | bool %}
 
 # Plain HTTP only redirects to HTTPS.
 <VirtualHost *:{{ apache_listen_http }}>
     ServerName {{ apache_server_name }}
     RewriteEngine On
+{% if apache_tls_source == 'letsencrypt' %}
+    RewriteCond %{REQUEST_URI} !^/\.well-known/acme-challenge/
+{% endif %}
     RewriteRule ^ https://%{HTTP_HOST}{{ '' if apache_listen_https | int == 443 else ':' ~ apache_listen_https }}%{REQUEST_URI} [R=301,L]
 </VirtualHost>
 {% endif %}

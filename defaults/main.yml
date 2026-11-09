@@ -24,8 +24,11 @@ apache_log_level: warn
 # - server_name: app.example.com
 #   server_aliases: [app]
 #   document_root: /var/www/app
-#   tls_cert_path: /etc/pki/httpd/app.crt   # optional, defaults to the main cert
+#   # Optional certificate, in this order:
+#   tls_cert_path: /etc/pki/httpd/app.crt   # explicit files (with tls_key_path)
 #   tls_key_path: /etc/pki/httpd/app.key
+#   ssl_certificate: app                    # an ssl_certificates entry by name
+#   # else the ssl_certificates entry named after server_name, else the default certificate
 #   extra: |
 #     ProxyPass /api http://127.0.0.1:8080/
 apache_vhosts: []
@@ -80,9 +83,13 @@ apache_cookie_flags: "{{ apache_stig_enabled }}"
 # TLS
 # ---------------------------------------------------------------------------
 # selfsigned: the role creates a private CA and a server certificate.
-# provided: you supply the certificate, key and CA (content or files).
+# provided: you supply certificates and keys in ssl_certificates.
+# letsencrypt: certbot gets and renews a certificate (needs EPEL, public DNS and
+# port 80 reachable from the internet).
 apache_tls_source: selfsigned
 apache_tls_dir: /etc/pki/httpd
+# What the default virtual host uses, for every source. With provided and
+# letsencrypt these are links to the real files.
 apache_tls_cert_path: "{{ apache_tls_dir }}/server.crt"
 apache_tls_key_path: "{{ apache_tls_dir }}/server.key"
 apache_tls_ca_path: "{{ apache_tls_dir }}/ca.crt"
@@ -90,12 +97,44 @@ apache_tls_protocol: all -SSLv3 -TLSv1 -TLSv1.1
 # PROFILE=SYSTEM follows the system crypto policy, which is what you want under FIPS.
 apache_tls_cipher_suite: PROFILE=SYSTEM
 
-apache_tls_cert_content: ""
-apache_tls_key_content: ""
-apache_tls_ca_content: ""
-apache_tls_cert_src: ""
-apache_tls_key_src: ""
-apache_tls_ca_src: ""
+# provided: each entry is written to <apache_tls_dir>/<name>.crt and <name>.key
+# (0600). Put any intermediate certificates in certificate.content, after the
+# server certificate. Keep the keys in Ansible Vault, and without a passphrase,
+# because httpd can't prompt for one.
+# - name: "{{ ansible_fqdn }}"
+#   certificate:
+#     content: |
+#       -----BEGIN CERTIFICATE-----
+#       ...
+#       -----END CERTIFICATE-----
+#   key:
+#     content: !vault |
+#       $ANSIBLE_VAULT;1.1;AES256
+#       ...
+ssl_certificates: []
+# Entry the default virtual host uses. Empty: the entry named apache_server_name,
+# else the first entry.
+apache_tls_default_certificate: ""
+
+# letsencrypt: true accepts the CA's subscriber agreement. Read it first.
+apache_letsencrypt_terms_agreed: false
+apache_letsencrypt_email: ""
+# One certificate covers all of these, and each name must reach this host on
+# port 80. The first names the certificate.
+apache_letsencrypt_domains: "{{ [apache_server_name] + (apache_vhosts | map(attribute='server_name') | list) }}"
+# Staging, for trying things out: https://acme-staging-v02.api.letsencrypt.org/directory
+apache_letsencrypt_server: https://acme-v02.api.letsencrypt.org/directory
+# Served at /.well-known/acme-challenge/ on every virtual host.
+apache_letsencrypt_webroot: /var/www/letsencrypt
+# rsa or ecdsa.
+apache_letsencrypt_key_type: rsa
+apache_letsencrypt_rsa_key_size: 3072
+apache_letsencrypt_elliptic_curve: secp384r1
+# Extra arguments for certbot certonly.
+apache_letsencrypt_extra_args: []
+# certbot comes from EPEL. Set to false only if EPEL (or a mirror of it) is
+# already configured.
+apache_epel_manage: true
 
 apache_tls_selfsigned_common_name: "{{ apache_server_name }}"
 apache_tls_selfsigned_subject_alt_names: >-

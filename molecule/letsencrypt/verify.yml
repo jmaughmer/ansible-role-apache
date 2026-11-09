@@ -1,0 +1,358 @@
+---
+- name: Verify
+  hosts: all
+  vars_files:
+    - vars/main.yml
+  vars:
+    tls_dir: /etc/pki/httpd
+    live_dir: /etc/letsencrypt/live/le.example.test
+    webroot: /var/www/letsencrypt
+    probe: "{{ webroot }}/.well-known/acme-challenge/molecule-probe"
+    two_domains: [le.example.test, le2.example.test]
+  tasks:
+    # ---------------------------------------------------------------------------
+    # What converge left behind
+    # ---------------------------------------------------------------------------
+    - name: Read the served certificate
+      ansible.builtin.include_tasks: tasks/served_cert.yml
+      vars:
+        sni: le.example.test
+
+    - name: Assert it came from the CA
+      ansible.builtin.assert:
+        that:
+          - "'Pebble' in served_cert.stdout"
+          - "'le.example.test' in served_cert.stdout"
+        fail_msg: "{{ served_cert.stdout }}"
+        quiet: true
+
+    - name: Read the default certificate paths
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop: ["{{ tls_dir }}/server.crt", "{{ tls_dir }}/server.key"]
+      register: links
+
+    - name: Read the key the link leads to
+      ansible.builtin.stat:
+        path: "{{ tls_dir }}/server.key"
+        follow: true
+      register: real_key
+
+    - name: Assert they are links, and the key is private
+      ansible.builtin.assert:
+        that:
+          - links.results[0].stat.islnk
+          - links.results[1].stat.islnk
+          - real_key.stat.mode == '0600'
+          - real_key.stat.pw_name == 'root'
+        fail_msg: "{{ real_key.stat.mode }} {{ real_key.stat.pw_name }}"
+        quiet: true
+
+    - name: Read the link targets as written
+      ansible.builtin.command: readlink {{ item }}
+      loop: ["{{ tls_dir }}/server.crt", "{{ tls_dir }}/server.key"]
+      register: targets
+      changed_when: false
+
+    - name: Assert the links go through the live directory
+      ansible.builtin.assert:
+        that:
+          - targets.results[0].stdout == live_dir ~ '/fullchain.pem'
+          - targets.results[1].stdout == live_dir ~ '/privkey.pem'
+        quiet: true
+
+    - name: The renewal timer is enabled and running
+      ansible.builtin.systemd_service:
+        name: certbot-renew.timer
+        state: started
+        enabled: true
+      check_mode: true
+      register: timer
+      failed_when: timer is changed
+
+    # ---------------------------------------------------------------------------
+    # The challenge path
+    # ---------------------------------------------------------------------------
+    - name: Put a file in the challenge directory
+      ansible.builtin.copy:
+        dest: "{{ probe }}"
+        content: probe
+        mode: "0644"
+
+    - name: The challenge path is answered on port 80 with no redirect
+      ansible.builtin.uri:
+        url: http://127.0.0.1/.well-known/acme-challenge/molecule-probe
+        headers:
+          Host: le.example.test
+        follow_redirects: none
+        return_content: true
+      register: challenge
+      failed_when: challenge.status != 200 or challenge.content != 'probe'
+
+    - name: The challenge path is answered over HTTPS too, for vhosts that redirect it
+      ansible.builtin.uri:
+        url: https://le.example.test/.well-known/acme-challenge/molecule-probe
+        validate_certs: false
+        return_content: true
+      register: challenge_tls
+      failed_when: challenge_tls.status != 200 or challenge_tls.content != 'probe'
+
+    - name: Anything else on port 80 still redirects
+      ansible.builtin.uri:
+        url: http://127.0.0.1/anything
+        headers:
+          Host: le.example.test
+        follow_redirects: none
+        status_code: 301
+
+    - name: Remove the file
+      ansible.builtin.file:
+        path: "{{ probe }}"
+        state: absent
+
+    # ---------------------------------------------------------------------------
+    # Renewal
+    # ---------------------------------------------------------------------------
+    # As the timer would run it. --no-verify-ssl is for Pebble's made-up API
+    # certificate, and certbot doesn't save it for renewals.
+    - name: Force a renewal
+      ansible.builtin.command: certbot renew --noninteractive --no-random-sleep-on-renew --force-renewal --no-verify-ssl
+      changed_when: true
+
+    - name: Remember the certificate served before
+      ansible.builtin.set_fact:
+        before_renewal: "{{ served_cert.stdout }}"
+
+    - name: Read the served certificate after the renewal
+      ansible.builtin.include_tasks: tasks/served_cert.yml
+      vars:
+        sni: le.example.test
+
+    - name: Assert the hook reloaded httpd with the new certificate
+      ansible.builtin.assert:
+        that: served_cert.stdout != before_renewal
+        quiet: true
+
+    # ---------------------------------------------------------------------------
+    # Adding a domain
+    # ---------------------------------------------------------------------------
+    - name: Add a domain
+      ansible.builtin.include_role:
+        name: ansible-role-apache
+      vars:
+        apache_letsencrypt_domains: "{{ two_domains }}"
+
+    - name: Read the served certificate after adding the domain
+      ansible.builtin.include_tasks: tasks/served_cert.yml
+      vars:
+        sni: le.example.test
+
+    - name: Assert it covers both domains
+      ansible.builtin.assert:
+        that: "'le2.example.test' in served_cert.stdout"
+        fail_msg: "{{ served_cert.stdout }}"
+        quiet: true
+
+    # ---------------------------------------------------------------------------
+    # Moving between sources
+    # ---------------------------------------------------------------------------
+    - name: Read the Let's Encrypt certificate
+      ansible.builtin.stat:
+        path: "{{ live_dir }}/fullchain.pem"
+        follow: true
+      register: live_before
+
+    - name: Switch to a self-signed certificate
+      ansible.builtin.include_role:
+        name: ansible-role-apache
+      vars:
+        apache_tls_source: selfsigned
+
+    - name: Read the paths after switching to self-signed
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop: ["{{ tls_dir }}/server.crt", "{{ tls_dir }}/server.key"]
+      register: selfsigned
+
+    - name: Read the Let's Encrypt certificate after switching to self-signed
+      ansible.builtin.stat:
+        path: "{{ live_dir }}/fullchain.pem"
+        follow: true
+      register: live_on_selfsigned
+
+    - name: Assert the links are gone and the Let's Encrypt files survived
+      ansible.builtin.assert:
+        that:
+          - not selfsigned.results[0].stat.islnk
+          - not selfsigned.results[1].stat.islnk
+          - live_on_selfsigned.stat.checksum == live_before.stat.checksum
+        quiet: true
+
+    - name: Read the served certificate on self-signed
+      ansible.builtin.include_tasks: tasks/served_cert.yml
+      vars:
+        sni: le.example.test
+
+    - name: Assert the role's own CA signed it
+      ansible.builtin.assert:
+        that: "'Apache CA' in served_cert.stdout"
+        fail_msg: "{{ served_cert.stdout }}"
+        quiet: true
+
+    - name: Switch back to Let's Encrypt
+      ansible.builtin.include_role:
+        name: ansible-role-apache
+      vars:
+        apache_letsencrypt_domains: "{{ two_domains }}"
+
+    - name: Read the Let's Encrypt certificate after switching back
+      ansible.builtin.stat:
+        path: "{{ live_dir }}/fullchain.pem"
+        follow: true
+      register: live_after
+
+    - name: Read the served certificate after switching back
+      ansible.builtin.include_tasks: tasks/served_cert.yml
+      vars:
+        sni: le.example.test
+
+    - name: Assert the same certificate is back, not a new one
+      ansible.builtin.assert:
+        that:
+          - "'Pebble' in served_cert.stdout"
+          - live_after.stat.checksum == live_before.stat.checksum
+        fail_msg: "{{ served_cert.stdout }}"
+        quiet: true
+
+    - name: Make a certificate to supply
+      ansible.builtin.command:
+        cmd: >-
+          openssl req -x509 -newkey rsa:3072 -nodes -days 2 -subj /CN=supplied.example.test
+          -keyout /root/supplied.key -out /root/supplied.crt
+        creates: /root/supplied.crt
+
+    - name: Read it
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop: [/root/supplied.crt, /root/supplied.key]
+      register: supplied
+      no_log: true
+
+    - name: Switch to a supplied certificate
+      ansible.builtin.include_role:
+        name: ansible-role-apache
+      vars:
+        apache_tls_source: provided
+        ssl_certificates:
+          - name: supplied.example.test
+            certificate: { content: "{{ supplied.results[0].content | b64decode }}" }
+            key: { content: "{{ supplied.results[1].content | b64decode }}" }
+
+    - name: Read the supplied certificate and the link to it
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop: ["{{ tls_dir }}/supplied.example.test.crt", "{{ tls_dir }}/server.crt"]
+      register: provided
+
+    - name: Read the Let's Encrypt certificate after switching to a supplied one
+      ansible.builtin.stat:
+        path: "{{ live_dir }}/fullchain.pem"
+        follow: true
+      register: live_on_provided
+
+    - name: Assert the link moved and the Let's Encrypt certificate survived
+      ansible.builtin.assert:
+        that:
+          - live_on_provided.stat.checksum == live_before.stat.checksum
+          - provided.results[1].stat.lnk_source == provided.results[0].stat.path
+        quiet: true
+
+    - name: Read the served certificate on the supplied certificate
+      ansible.builtin.include_tasks: tasks/served_cert.yml
+      vars:
+        sni: le.example.test
+
+    - name: Assert the supplied certificate is served
+      ansible.builtin.assert:
+        that: "'supplied.example.test' in served_cert.stdout"
+        fail_msg: "{{ served_cert.stdout }}"
+        quiet: true
+
+    # From a supplied certificate to Let's Encrypt with no certificate yet: the
+    # placeholder must not write through the links into the supplied files.
+    - name: Switch to Let's Encrypt under a new name
+      ansible.builtin.include_role:
+        name: ansible-role-apache
+      vars:
+        apache_letsencrypt_domains: [le3.example.test]
+
+    - name: Read the supplied certificate and the new link
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop: ["{{ tls_dir }}/supplied.example.test.crt", "{{ tls_dir }}/supplied.example.test.key"]
+      register: supplied_after
+
+    - name: Read the target of the new link
+      ansible.builtin.command: readlink {{ tls_dir }}/server.crt
+      register: new_target
+      changed_when: false
+
+    - name: Read the served certificate under the new name
+      ansible.builtin.include_tasks: tasks/served_cert.yml
+      vars:
+        sni: le3.example.test
+
+    - name: Assert the supplied files survived and the new certificate is served
+      ansible.builtin.assert:
+        that:
+          - supplied_after.results[0].stat.checksum == provided.results[0].stat.checksum
+          - supplied_after.results[1].stat.mode == '0600'
+          - new_target.stdout == '/etc/letsencrypt/live/le3.example.test/fullchain.pem'
+          - "'Pebble' in served_cert.stdout"
+          - "'le3.example.test' in served_cert.stdout"
+        fail_msg: "{{ served_cert.stdout }}"
+        quiet: true
+
+    # ---------------------------------------------------------------------------
+    # Failures
+    # ---------------------------------------------------------------------------
+    - name: A failed request fails the run
+      ansible.builtin.include_tasks: ../provided/tasks/expect_failure.yml
+      vars:
+        expected: certbot
+        apache_letsencrypt_domains: [no-such-name.example.test]
+
+    - name: Read the served certificate after the failed request
+      ansible.builtin.include_tasks: tasks/served_cert.yml
+      vars:
+        sni: le.example.test
+
+    - name: Assert httpd stayed up on the placeholder
+      ansible.builtin.assert:
+        that: "'Apache CA' in served_cert.stdout"
+        fail_msg: "{{ served_cert.stdout }}"
+        quiet: true
+
+    - name: Refuse to run without accepting the terms
+      ansible.builtin.include_tasks: ../provided/tasks/expect_failure.yml
+      vars:
+        expected: apache_letsencrypt_terms_agreed
+        apache_letsencrypt_terms_agreed: false
+
+    - name: Refuse to run without an address
+      ansible.builtin.include_tasks: ../provided/tasks/expect_failure.yml
+      vars:
+        expected: apache_letsencrypt_email
+        apache_letsencrypt_email: ""
+
+    - name: Refuse a wildcard
+      ansible.builtin.include_tasks: ../provided/tasks/expect_failure.yml
+      vars:
+        expected: no wildcards
+        apache_letsencrypt_domains: ["*.example.test"]
+
+    - name: Refuse a stopped service
+      ansible.builtin.include_tasks: ../provided/tasks/expect_failure.yml
+      vars:
+        expected: apache_service_state
+        apache_service_state: stopped

@@ -1,0 +1,11 @@
+---
+# Read the certificate served for "sni" into served_cert: issuer, SANs and fingerprint.
+- name: "Read the certificate served for {{ sni }}"
+  ansible.builtin.shell: |
+    set -o pipefail
+    openssl s_client -connect 127.0.0.1:443 -servername {{ sni | quote }} </dev/null 2>/dev/null |
+      openssl x509 -noout -issuer -fingerprint -sha256 -ext subjectAltName
+  args:
+    executable: /bin/bash
+  register: served_cert
+  changed_when: false

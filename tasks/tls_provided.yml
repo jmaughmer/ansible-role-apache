@@ -1,0 +1,87 @@
+---
+# Every loop here runs over indexes, not entries, so no task result carries a
+# private key in its "item".
+
+# The pairs are checked before any file is written, so a bad one can't take a
+# running httpd down at its next reload.
+- name: Read the supplied certificates
+  community.crypto.x509_certificate_info:
+    content: "{{ ssl_certificates[item].certificate.content }}"
+  loop: "{{ range(ssl_certificates | length) | list }}"
+  loop_control:
+    label: "{{ ssl_certificates[item].name }}"
+  register: __apache_ssl_cert_info
+  failed_when: false
+
+- name: Read the supplied private keys
+  community.crypto.openssl_privatekey_info:
+    content: "{{ ssl_certificates[item].key.content }}"
+  loop: "{{ range(ssl_certificates | length) | list }}"
+  loop_control:
+    label: "{{ ssl_certificates[item].name }}"
+  register: __apache_ssl_key_info
+  failed_when: false
+  no_log: true
+
+- name: Check each key belongs to its certificate
+  ansible.builtin.assert:
+    that:
+      - __cert.public_key is defined
+      - __key.public_key is defined
+      - __cert.public_key == __key.public_key
+      - not __cert.expired
+    fail_msg: >-
+      ssl_certificates entry {{ ssl_certificates[item].name }}:
+      {{ 'the certificate is not valid PEM' if __cert.public_key is not defined
+         else 'the key is not valid PEM or has a passphrase, which httpd cannot prompt for' if __key.public_key is not defined
+         else 'the key does not match the certificate' if __cert.public_key != __key.public_key
+         else 'the certificate has expired' }}.
+    quiet: true
+  vars:
+    __cert: "{{ __apache_ssl_cert_info.results[item] }}"
+    __key: "{{ __apache_ssl_key_info.results[item] }}"
+  loop: "{{ range(ssl_certificates | length) | list }}"
+  loop_control:
+    label: "{{ ssl_certificates[item].name }}"
+
+- name: Install the supplied certificates
+  ansible.builtin.copy:
+    dest: "{{ apache_tls_dir }}/{{ ssl_certificates[item].name }}.crt"
+    content: "{{ ssl_certificates[item].certificate.content }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ range(ssl_certificates | length) | list }}"
+  loop_control:
+    label: "{{ ssl_certificates[item].name }}"
+  notify: Restart httpd
+
+- name: Install the supplied private keys
+  ansible.builtin.copy:
+    dest: "{{ apache_tls_dir }}/{{ ssl_certificates[item].name }}.key"
+    content: "{{ ssl_certificates[item].key.content }}"
+    owner: root
+    group: root
+    mode: "0600"
+  loop: "{{ range(ssl_certificates | length) | list }}"
+  loop_control:
+    label: "{{ ssl_certificates[item].name }}"
+  no_log: true
+  diff: false
+  notify: Restart httpd
+
+# The default virtual host, and anything else that uses apache_tls_cert_path and
+# apache_tls_key_path, keeps the same paths whichever certificate source is used.
+- name: Link the default certificate
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    src: "{{ item.src }}"
+    state: link
+    force: true
+  loop:
+    - { path: "{{ apache_tls_cert_path }}", src: "{{ apache_tls_dir }}/{{ __apache_tls_default_certificate }}.crt" }
+    - { path: "{{ apache_tls_key_path }}", src: "{{ apache_tls_dir }}/{{ __apache_tls_default_certificate }}.key" }
+  loop_control:
+    label: "{{ item.path }}"
+  when: item.path != item.src
+  notify: Restart httpd

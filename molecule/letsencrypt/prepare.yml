@@ -1,0 +1,122 @@
+---
+- name: Prepare
+  hosts: all
+  vars:
+    pebble_version: v2.10.1
+    pebble_url: "https://github.com/letsencrypt/pebble/releases/download/{{ pebble_version }}/pebble-linux-amd64.tar.gz"
+    pebble_checksum: sha256:4f2fcb5bca8c85c9cf73ad140fccfc0d2be40bd81ab99879c79b7b8a0b4f70ed
+  tasks:
+    - name: Install what the tests and Pebble's setup use
+      ansible.builtin.dnf:
+        name: [openssl, tar, gzip]
+        state: present
+
+    # /etc/hosts is a bind mount in podman, so it cannot be replaced atomically.
+    - name: Resolve the test names locally, for Pebble's HTTP-01 checks
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        line: "127.0.0.1 {{ item }}"
+        unsafe_writes: true
+      loop:
+        - le.example.test
+        - le2.example.test
+        - le3.example.test
+
+    - name: Create the Pebble directory
+      ansible.builtin.file:
+        path: /opt/pebble
+        state: directory
+        mode: "0755"
+
+    - name: Download Pebble
+      ansible.builtin.get_url:
+        url: "{{ pebble_url }}"
+        dest: /opt/pebble/pebble.tar.gz
+        checksum: "{{ pebble_checksum }}"
+        mode: "0644"
+        timeout: 60
+      register: pebble_download
+      retries: 3
+      delay: 5
+      until: pebble_download is succeeded
+
+    - name: Unpack Pebble
+      ansible.builtin.unarchive:
+        src: /opt/pebble/pebble.tar.gz
+        dest: /opt/pebble
+        remote_src: true
+        creates: /opt/pebble/pebble-linux-amd64/linux/amd64/pebble
+
+    # The archive's own modes and owner don't make it runnable.
+    - name: Install the Pebble binary
+      ansible.builtin.copy:
+        src: /opt/pebble/pebble-linux-amd64/linux/amd64/pebble
+        dest: /opt/pebble/pebble
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Make a certificate for Pebble's API
+      ansible.builtin.command:
+        cmd: >-
+          openssl req -x509 -newkey rsa:3072 -nodes -days 30 -subj /CN=localhost
+          -addext subjectAltName=DNS:localhost,IP:127.0.0.1
+          -keyout /opt/pebble/key.pem -out /opt/pebble/cert.pem
+        creates: /opt/pebble/cert.pem
+
+    - name: Configure Pebble
+      ansible.builtin.copy:
+        dest: /opt/pebble/config.json
+        mode: "0644"
+        content: |
+          {
+            "pebble": {
+              "listenAddress": "127.0.0.1:14000",
+              "managementListenAddress": "127.0.0.1:15000",
+              "certificate": "/opt/pebble/cert.pem",
+              "privateKey": "/opt/pebble/key.pem",
+              "httpPort": 80,
+              "tlsPort": 443,
+              "ocspResponderURL": "",
+              "externalAccountBindingRequired": false
+            }
+          }
+
+    - name: Write the Pebble service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/pebble.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Pebble ACME test server
+          [Service]
+          # No sleeps or random rejections, and a real challenge for every request.
+          Environment=PEBBLE_VA_NOSLEEP=1 PEBBLE_WFE_NONCEREJECT=0 PEBBLE_AUTHZREUSE=0
+          ExecStart=/opt/pebble/pebble -config /opt/pebble/config.json
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Start Pebble
+      ansible.builtin.systemd_service:
+        name: pebble
+        state: started
+        enabled: true
+        daemon_reload: true
+
+    - name: Wait for Pebble
+      block:
+        - name: Wait for its port
+          ansible.builtin.wait_for:
+            port: 14000
+            host: 127.0.0.1
+            timeout: 30
+      rescue:
+        - name: Read why Pebble isn't listening
+          ansible.builtin.command: journalctl -u pebble --no-pager -n 30
+          register: pebble_log
+          changed_when: false
+
+        - name: Stop with its log
+          ansible.builtin.fail:
+            msg: "{{ pebble_log.stdout_lines }}"

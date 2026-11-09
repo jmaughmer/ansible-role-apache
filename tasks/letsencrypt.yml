@@ -1,0 +1,41 @@
+---
+# Runs once httpd is up with the firewall open, so the HTTP-01 challenge can be
+# answered. A certificate that isn't due for renewal is left alone, without
+# contacting the CA. If this fails, httpd stays on the certificate it has.
+#
+# The reload is an inline hook, not a script in renewal-hooks/deploy, because
+# fapolicyd would stop certbot from executing a script that isn't from an RPM.
+- name: Request the Let's Encrypt certificate
+  ansible.builtin.command:
+    argv: "{{ __apache_certbot_argv }}"
+  register: __apache_certbot
+  changed_when: "'no action taken' not in (__apache_certbot.stdout ~ __apache_certbot.stderr)"
+  notify: Restart httpd
+
+- name: Link the Let's Encrypt certificate
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    src: "{{ item.src }}"
+    state: link
+    force: true
+  loop:
+    - { path: "{{ apache_tls_cert_path }}", src: "{{ __apache_letsencrypt_live_dir }}/fullchain.pem" }
+    - { path: "{{ apache_tls_key_path }}", src: "{{ __apache_letsencrypt_live_dir }}/privkey.pem" }
+  loop_control:
+    label: "{{ item.path }}"
+  notify: Restart httpd
+
+# certbot creates these directories under etc_t, not the cert_t the policy wants.
+- name: Restore file contexts on the Let's Encrypt files
+  ansible.builtin.command: restorecon -R -v /etc/letsencrypt
+  register: __apache_letsencrypt_restorecon
+  changed_when: __apache_letsencrypt_restorecon.stdout | length > 0
+  when:
+    - apache_selinux_manage | bool
+    - ansible_facts['selinux']['status'] | default('disabled') == 'enabled'
+
+- name: Enable certificate renewal
+  ansible.builtin.systemd_service:
+    name: certbot-renew.timer
+    state: started
+    enabled: true

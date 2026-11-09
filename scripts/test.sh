@@ -5,7 +5,8 @@
 # Rootless podman is used by default; if rootless systemd containers don't
 # work on your WSL setup, run the script with sudo for rootful podman.
 #
-# Usage: scripts/test.sh [lint|default|el8|all ...]   (default: all)
+# Usage: scripts/test.sh [lint|default|el8|provided|provided-el8|letsencrypt|letsencrypt-el8|all ...]
+# (default: all)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -56,23 +57,38 @@ run_lint() {
 
 run_scenario() { # <venv> <scenario>
   local venv="$1" scenario="$2"
+  local output="$CACHE/$scenario.log"
   log "molecule test -s $scenario"
   # molecule expects the role directory's name on ANSIBLE_ROLES_PATH.
   [[ "$ROLE_NAME" == "ansible-role-apache" ]] ||
     die "the repository directory must be named ansible-role-apache (it is $ROLE_NAME)"
   (cd "$ROOT" &&
     PATH="$venv/bin:$PATH" ANSIBLE_COLLECTIONS_PATH="$venv/collections" \
-      molecule test -s "$scenario")
+      molecule test -s "$scenario") 2>&1 | tee "$output" || return 1
+  # A supplied private key must never reach the output.
+  if grep -q 'PRIVATE KEY' "$output"; then
+    printf '\033[1;31mPrivate key material in the output: %s\033[0m\n' "$output" >&2
+    return 1
+  fi
 }
 
 main() {
   local targets=("$@")
   ((${#targets[@]})) || targets=(all)
-  [[ " ${targets[*]} " == *" all "* ]] && targets=(lint default el8)
+
+  # The provided scenario's test keys are vaulted. This uses a temporary copy of
+  # the password file because everything on a Windows mount (/mnt/c) looks
+  # executable, and Ansible would try to run it as a script.
+  ANSIBLE_VAULT_PASSWORD_FILE="$(mktemp)"
+  export ANSIBLE_VAULT_PASSWORD_FILE
+  trap 'rm -f "$ANSIBLE_VAULT_PASSWORD_FILE"' EXIT
+  cat "$ROOT/molecule/provided/vault-password" >"$ANSIBLE_VAULT_PASSWORD_FILE"
+
+  [[ " ${targets[*]} " == *" all "* ]] && targets=(lint default el8 provided provided-el8 letsencrypt letsencrypt-el8)
 
   check_host
   make_venv "$VENV" "ansible-core ansible-lint yamllint" -r "$ROOT/requirements.yml"
-  if [[ " ${targets[*]} " == *" el8 "* ]]; then
+  if [[ " ${targets[*]} " == *el8* ]]; then
     make_venv "$VENV_EL8" "ansible-core>=2.16,<2.17" \
       "ansible.posix:>=1.5.0,<2.0.0" "community.general:>=8.0.0,<11.0.0" "containers.podman:>=1.10.0,<1.17.0" \
       "community.crypto:>=2.15.0,<3.0.0"
@@ -82,9 +98,9 @@ main() {
   for t in "${targets[@]}"; do
     case "$t" in
       lint) run_lint || failed+=("$t") ;;
-      default) run_scenario "$VENV" "$t" || failed+=("$t") ;;
-      el8) run_scenario "$VENV_EL8" el8 || failed+=("$t") ;;
-      *) die "unknown target: $t (expected lint, default, el8 or all)" ;;
+      default | provided | letsencrypt) run_scenario "$VENV" "$t" || failed+=("$t") ;;
+      el8 | provided-el8 | letsencrypt-el8) run_scenario "$VENV_EL8" "$t" || failed+=("$t") ;;
+      *) die "unknown target: $t (expected lint, default, el8, provided, provided-el8, letsencrypt, letsencrypt-el8 or all)" ;;
     esac
   done
 
