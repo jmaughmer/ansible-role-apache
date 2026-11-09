@@ -1,5 +1,6 @@
 # {{ ansible_managed }}
 {% for vhost in apache_vhosts %}
+{% set certificate = vhost.ssl_certificate | default(vhost.server_name if apache_tls_source == 'provided' and vhost.server_name in __apache_ssl_certificate_names else '') %}
 
 <VirtualHost *:{{ apache_listen_https }}>
     ServerName {{ vhost.server_name }}
@@ -12,8 +13,8 @@
     CustomLog logs/{{ vhost.server_name }}_ssl_access_log combined_tls
 
     SSLEngine on
-    SSLCertificateFile {{ vhost.tls_cert_path | default(apache_tls_cert_path) }}
-    SSLCertificateKeyFile {{ vhost.tls_key_path | default(apache_tls_key_path) }}
+    SSLCertificateFile {{ vhost.tls_cert_path | default((apache_tls_dir ~ '/' ~ certificate ~ '.crt') if certificate else apache_tls_cert_path) }}
+    SSLCertificateKeyFile {{ vhost.tls_key_path | default((apache_tls_dir ~ '/' ~ certificate ~ '.key') if certificate else apache_tls_key_path) }}
 
     <IfModule headers_module>
         Header always set Strict-Transport-Security "max-age={{ apache_hsts_max_age }}; includeSubDomains"

@@ -9,19 +9,59 @@
       {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}.
     quiet: true
 
-- name: Assert TLS settings
+- name: Assert the certificate source
+  ansible.builtin.assert:
+    that: apache_tls_source in ['selfsigned', 'provided', 'letsencrypt']
+    fail_msg: apache_tls_source must be "selfsigned", "provided" or "letsencrypt".
+    quiet: true
+
+# These run on the list as a whole, with filters, so that no result holds a key.
+- name: Assert the supplied certificates are listed
+  ansible.builtin.assert:
+    that: ssl_certificates | length > 0
+    fail_msg: >-
+      apache_tls_source "provided" needs at least one entry in ssl_certificates, each with
+      name, certificate.content and key.content. ssl_certificates replaces
+      apache_tls_cert_content, apache_tls_key_content and the apache_tls_*_src variables.
+    quiet: true
+  when: apache_tls_source == 'provided'
+
+- name: Assert the supplied certificate entries
   ansible.builtin.assert:
     that:
-      - apache_tls_source in ['selfsigned', 'provided']
-      - >-
-        apache_tls_source != 'provided' or
-        ((apache_tls_cert_content | length > 0 or apache_tls_cert_src | length > 0) and
-         (apache_tls_key_content | length > 0 or apache_tls_key_src | length > 0))
+      - ssl_certificates | selectattr('certificate.content', 'undefined') | list | length == 0
+      - ssl_certificates | selectattr('key.content', 'undefined') | list | length == 0
+      - __apache_ssl_certificate_names | reject('match', __apache_ssl_certificate_name_pattern) | list | length == 0
+      - __apache_ssl_certificate_names | unique | length == __apache_ssl_certificate_names | length
     fail_msg: >-
-      apache_tls_source must be "selfsigned" or "provided". With "provided", set
-      apache_tls_cert_content or apache_tls_cert_src, and apache_tls_key_content
-      or apache_tls_key_src (the CA is optional).
+      Every entry in ssl_certificates needs certificate.content, key.content and a unique name
+      that is safe as a file name (letters, digits, and . _ - *; no slashes, spaces or "..").
     quiet: true
+  when: apache_tls_source == 'provided'
+
+- name: Assert the default certificate exists
+  ansible.builtin.assert:
+    that: __apache_tls_default_certificate in __apache_ssl_certificate_names
+    fail_msg: apache_tls_default_certificate must be the name of an entry in ssl_certificates.
+    quiet: true
+  when: apache_tls_source == 'provided'
+
+- name: Assert the Let's Encrypt settings
+  ansible.builtin.assert:
+    that:
+      - apache_letsencrypt_terms_agreed | bool
+      - apache_letsencrypt_email | length > 0
+      - apache_letsencrypt_domains | length > 0
+      - apache_letsencrypt_domains | select('search', '[*]') | list | length == 0
+      - apache_letsencrypt_key_type in ['rsa', 'ecdsa']
+      - apache_service_state == 'started'
+    fail_msg: >-
+      apache_tls_source "letsencrypt" needs apache_letsencrypt_terms_agreed true (it accepts the
+      CA's subscriber agreement for you), apache_letsencrypt_email, apache_letsencrypt_domains with
+      no wildcards (the HTTP-01 challenge can't validate those), apache_letsencrypt_key_type "rsa"
+      or "ecdsa", and apache_service_state "started", because httpd answers the challenge.
+    quiet: true
+  when: apache_tls_source == 'letsencrypt'
 
 - name: Assert virtual hosts
   ansible.builtin.assert:
@@ -29,6 +69,16 @@
       - apache_vhosts | selectattr('server_name', 'undefined') | list | length == 0
       - apache_vhosts | map(attribute='server_name') | list | unique | length == apache_vhosts | length
     fail_msg: Every entry in apache_vhosts needs a unique server_name.
+    quiet: true
+
+- name: Assert virtual host certificates
+  ansible.builtin.assert:
+    that:
+      - __apache_vhost_certificates | length == 0 or apache_tls_source == 'provided'
+      - __apache_vhost_certificates | difference(__apache_ssl_certificate_names) | length == 0
+    fail_msg: >-
+      ssl_certificate in apache_vhosts needs apache_tls_source "provided" and must name an entry in
+      ssl_certificates ({{ __apache_vhost_certificates | difference(__apache_ssl_certificate_names) | join(', ') }}).
     quiet: true
 
 - name: Assert configuration snippets

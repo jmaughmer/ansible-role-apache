@@ -36,3 +36,12 @@
 - name: Manage services
   ansible.builtin.import_tasks: service.yml
   tags: [apache, apache_service]
+
+- name: Request the Let's Encrypt certificate
+  ansible.builtin.import_tasks: letsencrypt.yml
+  when: apache_tls_source == 'letsencrypt'
+  tags: [apache, apache_tls, apache_letsencrypt]
+
+- name: Start using the new certificate
+  ansible.builtin.meta: flush_handlers
+  tags: [apache, apache_tls, apache_letsencrypt]

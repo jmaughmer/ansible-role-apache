@@ -50,7 +50,8 @@
         setype: httpd_sys_content_t
         state: present
       loop: >-
-        {{ ([apache_document_root] + apache_vhosts | map(attribute='document_root', default=apache_document_root) | list)
+        {{ ([apache_document_root] + apache_vhosts | map(attribute='document_root', default=apache_document_root) | list
+            + ([apache_letsencrypt_webroot] if apache_tls_source == 'letsencrypt' else []))
            | unique | reject('match', '^/var/www(/|$)') }}
 
     - name: Add custom file contexts
@@ -70,7 +71,8 @@
       vars:
         __apache_selinux_paths: >-
           {{ ([apache_document_root, apache_tls_dir]
-              + (apache_vhosts | map(attribute='document_root', default=apache_document_root) | list)) | unique }}
+              + (apache_vhosts | map(attribute='document_root', default=apache_document_root) | list)
+              + ([apache_letsencrypt_webroot] if apache_tls_source == 'letsencrypt' else [])) | unique }}
 
     - name: Set SELinux booleans
       ansible.posix.seboolean:

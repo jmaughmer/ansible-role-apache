@@ -1,0 +1,10 @@
+---
+# Pebble, Let's Encrypt's test CA, runs inside the test container (prepare.yml).
+# It connects to port 80 for the HTTP-01 challenge, as Let's Encrypt would.
+apache_tls_source: letsencrypt
+apache_server_name: le.example.test
+apache_letsencrypt_terms_agreed: true
+apache_letsencrypt_email: admin@example.test
+apache_letsencrypt_server: https://localhost:14000/dir
+# Pebble's own certificate is one prepare.yml made up.
+apache_letsencrypt_extra_args: [--no-verify-ssl]

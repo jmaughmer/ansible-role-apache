@@ -11,5 +11,5 @@ galaxy_info:
   platforms:
     - name: EL
       versions: ["8", "9", "10"]
-  galaxy_tags: [apache, httpd, web, php, stig, fips, selinux, tls]
+  galaxy_tags: [apache, httpd, web, php, stig, fips, selinux, tls, letsencrypt]
 dependencies: []
