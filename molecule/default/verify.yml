@@ -53,13 +53,24 @@
           - cookies.set_cookie | lower | regex_findall('httponly') | length == 3
         fail_msg: "{{ cookies.set_cookie | default('no Set-Cookie header') }}"
 
-    - name: Name-based vhost answers with a certificate the CA verifies  # noqa: command-instead-of-module
+    # www.example.test is also apache_server_name: the default vhost must not hide it.
+    - name: Name-based vhosts answer with a certificate the CA verifies  # noqa: command-instead-of-module
       ansible.builtin.command: >-
-        curl -sS --fail --cacert /etc/pki/httpd/ca.crt --resolve app.example.test:443:127.0.0.1
-        https://app.example.test/index.php
+        curl -sS --fail --cacert /etc/pki/httpd/ca.crt --resolve {{ item }}:443:127.0.0.1
+        https://{{ item }}/index.php
+      loop: [app.example.test, www.example.test]
       register: vhost
       changed_when: false
       failed_when: vhost.rc != 0 or vhost.stdout != 'php-ok'
+
+    # The default vhost's document root has no index.php, unlike the named vhosts'.
+    - name: Names nothing claims reach the default vhost  # noqa: command-instead-of-module
+      ansible.builtin.command: >-
+        curl -sSk -o /dev/null -w '%{http_code}' --resolve other.example.test:443:127.0.0.1
+        https://other.example.test/index.php
+      register: unclaimed
+      changed_when: false
+      failed_when: unclaimed.rc != 0 or unclaimed.stdout != '404'
 
     - name: TRACE is refused
       ansible.builtin.uri:
