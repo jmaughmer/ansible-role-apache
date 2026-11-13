@@ -118,7 +118,7 @@ Change `apache_tls_source` and re-run. The links at `apache_tls_cert_path` and `
 
 ## Adding applications
 
-The default TLS virtual host serves `apache_document_root` for `apache_server_name`. Applications can attach to it in three ways:
+The default TLS virtual host serves `apache_document_root` for every name no other vhost claims. That includes `apache_server_name`, unless a vhost uses that name. Applications can attach to it in three ways:
 
 1. **Server-wide snippets:** `apache_conf_snippets: [{ name: myapp, content: "Alias /myapp /usr/share/myapp ..." }]` writes `/etc/httpd/conf.d/myapp.conf`. Port 80 only redirects, so aliases are only reachable over HTTPS.
 2. **Inside the default TLS vhost:** drop a `.conf` file into `/etc/httpd/conf.d/default-ssl.d/`.
@@ -127,6 +127,8 @@ The default TLS virtual host serves `apache_document_root` for `apache_server_na
 Another role in the same play can write its own files and `notify: reload httpd` (or `restart httpd`, `restart php-fpm`). The role runs `httpd -t` before starting or reloading.
 
 The default vhost is the first `*:443` vhost Apache reads. A file in `conf.d` that sorts before `ssl.conf` and defines its own `*:443` vhost will take that place.
+
+Its `ServerName` is `default.invalid`, a reserved name, so other vhosts can use any real name, including `apache_server_name`. mod_ssl logs an `AH01909` warning about this at startup because the certificate can't list that name. You can ignore it.
 
 ## Hardening
 

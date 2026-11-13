@@ -16,9 +16,12 @@ SSLCompression off
 SSLSessionTickets off
 
 # Default TLS virtual host. It is the first *:443 vhost (ssl.conf sorts before
-# vhosts.conf), so it answers requests for names no other vhost claims.
+# vhosts.conf), so it answers requests for names no other vhost claims. The first
+# vhost with a matching name wins, so a real name here would hide any later vhost
+# using it. .invalid is reserved and never resolves, so nothing can collide.
+# mod_ssl logs AH01909 at startup because the certificate can't list this name.
 <VirtualHost *:{{ apache_listen_https }}>
-    ServerName {{ apache_server_name }}
+    ServerName default.invalid
     DocumentRoot "{{ apache_document_root }}"
 
     ErrorLog logs/ssl_error_log

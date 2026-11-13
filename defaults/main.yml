@@ -121,7 +121,7 @@ apache_letsencrypt_terms_agreed: false
 apache_letsencrypt_email: ""
 # One certificate covers all of these, and each name must reach this host on
 # port 80. The first names the certificate.
-apache_letsencrypt_domains: "{{ [apache_server_name] + (apache_vhosts | map(attribute='server_name') | list) }}"
+apache_letsencrypt_domains: "{{ ([apache_server_name] + (apache_vhosts | map(attribute='server_name') | list)) | unique }}"
 # Staging, for trying things out: https://acme-staging-v02.api.letsencrypt.org/directory
 apache_letsencrypt_server: https://acme-v02.api.letsencrypt.org/directory
 # Served at /.well-known/acme-challenge/ on every virtual host.
@@ -138,8 +138,8 @@ apache_epel_manage: true
 
 apache_tls_selfsigned_common_name: "{{ apache_server_name }}"
 apache_tls_selfsigned_subject_alt_names: >-
-  {{ ['DNS:' ~ apache_server_name, 'DNS:' ~ ansible_facts['hostname'], 'DNS:localhost', 'IP:127.0.0.1']
-     + (apache_vhosts | map(attribute='server_name') | map('regex_replace', '^', 'DNS:') | list) | unique }}
+  {{ (['DNS:' ~ apache_server_name, 'DNS:' ~ ansible_facts['hostname'], 'DNS:localhost', 'IP:127.0.0.1']
+      + (apache_vhosts | map(attribute='server_name') | map('regex_replace', '^', 'DNS:') | list)) | unique }}
 apache_tls_selfsigned_key_type: RSA
 apache_tls_selfsigned_key_size: 3072
 apache_tls_selfsigned_digest: sha256

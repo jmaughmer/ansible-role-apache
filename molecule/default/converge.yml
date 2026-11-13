@@ -11,8 +11,12 @@
           <Directory /srv/app>
               Require all granted
           </Directory>
+    apache_server_name: www.example.test
     apache_vhosts:
       - server_name: app.example.test
+        document_root: /srv/app
+      # Same name as apache_server_name: the default vhost must not hide it.
+      - server_name: www.example.test
         document_root: /srv/app
     # fapolicyd is installed (not started) by prepare.yml to test the trust file.
     apache_fapolicyd_trusted_dirs: [/srv/app]
