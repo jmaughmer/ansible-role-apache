@@ -10,7 +10,7 @@ Features:
 - Optional PHP-FPM from AppStream (PHP 8.2 module stream on EL8/EL9), with hardened `php.ini` settings.
 - A place for other roles to plug in: configuration snippets, an include directory inside the default TLS vhost, and handlers they can notify.
 - SELinux port and file labeling and booleans, a fapolicyd trust file for web content deployed outside RPMs, and FIPS checks.
-- Molecule tests with podman on EL8, EL9 and EL10.
+- Molecule tests on the Proxmox test lab's VMs: EL9 and EL10, SELinux enforcing.
 
 Used by [ansible-role-phpmyadmin](https://github.com/jmaughmer/ansible-role-phpmyadmin).
 
@@ -174,18 +174,43 @@ Tags: `apache_install`, `apache_tls`, `apache_letsencrypt`, `apache_config`, `ap
 
 ## Testing
 
-Tests run locally with podman; there is no CI. On the AlmaLinux 10 WSL distribution (or any EL10 host):
+Tests run on the Proxmox test lab: two real KVM VMs cloned from the lab fleet onto its
+isolated labnet network, `apache-default-el9` and `apache-default-el10` — the role's EL
+matrix, with SELinux enforcing and firewalld running, the paths containers never could.
+[`prepare.yml`](molecule/default/prepare.yml) gets the VMs onto the labnet resolver (and
+installs Python 3.11 if a box runs EL8), then lays out the PHP pages the role and the
+verify run expect. The sequence is destroy → syntax → create → prepare → converge →
+idempotence → verify → destroy. Converge installs httpd with PHP over TLS, `verify.yml`
+asserts the HTTP→HTTPS redirect, the hardened headers and cookie-flag rules, name-based
+vhosts answered with a certificate the test CA verifies, TRACE and TLS ≤ 1.1 refused, and
+no directory listings.
 
 ```bash
-scripts/test.sh            # everything below
-scripts/test.sh lint default el8                   # lint, then self-signed on EL9 + EL10 and on EL8
-scripts/test.sh provided provided-el8              # supplied certificates
-scripts/test.sh letsencrypt letsencrypt-el8        # Let's Encrypt, against Pebble
+molecule test                                   # EL9 + EL10
+LAB_TEMPLATE_EL9=template-alma8 molecule test   # move one box to EL8
 ```
 
-The repository directory must be named `ansible-role-apache`. SELinux, FIPS and firewalld can't be exercised in containers.
+Tests run on the lab's molecule control machine: `molecule`, `molecule-proxmox` and the
+role's collections are preinstalled there, and the driver's connection secrets and SSH key
+live only in its own config files. Nothing lab-specific is in this repo beyond the fleet
+template names and the default VMID band (9210–9211); hosts, tokens and subnets never
+leave the control machine. The Test Lab project's `molecule-labnet/` directory documents
+the lab itself. For several runs of this repo at once, use the lab's `mlab` wrapper, which
+claims a free VMID band per run:
 
-The `provided` scenarios use throwaway certificates, with test keys vaulted using the password in `molecule/provided/vault-password`. The script fails a run if a private key shows up in its output. The `letsencrypt` scenarios download [Pebble](https://github.com/letsencrypt/pebble), Let's Encrypt's test CA, and run it inside the container, so they never contact Let's Encrypt.
+```bash
+/root/labnet/mlab test -s default               # parallel-safe run on the control machine
+```
+
+Lint with `yamllint .` and `ansible-lint` (configured by [`.yamllint`](.yamllint) and
+[`.ansible-lint`](.ansible-lint)). There is no CI; run the lint and Molecule from the
+control machine.
+
+Not covered by the scenario: the supplied-certificate paths with vaulted test keys and the
+Let's Encrypt paths against a Pebble test CA (the removed `provided`/`letsencrypt`
+container scenarios), and running the EL8 target on the older ansible-core those scenarios
+pinned. Let's Encrypt staging can be exercised manually with
+`apache_letsencrypt_server` pointed at the staging directory.
 
 ## License
 
