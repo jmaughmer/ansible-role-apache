@@ -10,7 +10,8 @@
   check_mode: false
 
 - name: Set the system crypto policy
-  ansible.builtin.command: "update-crypto-policies --set {{ apache_crypto_policy }}"
+  ansible.builtin.command:
+    argv: [update-crypto-policies, --set, "{{ apache_crypto_policy }}"]
   when:
     - apache_crypto_policy | length > 0
     - (__apache_crypto_policy.stdout | default('') | trim) != apache_crypto_policy
@@ -64,8 +65,10 @@
       loop_control:
         label: "{{ item.target }}"
 
+    # argv, not one string: a document root with a space must stay one argument.
     - name: Restore file contexts
-      ansible.builtin.command: "restorecon -R -v {{ __apache_selinux_paths | join(' ') }}"
+      ansible.builtin.command:
+        argv: "{{ ['restorecon', '-R', '-v'] + __apache_selinux_paths }}"
       register: __apache_restorecon
       changed_when: __apache_restorecon.stdout | length > 0
       vars:
