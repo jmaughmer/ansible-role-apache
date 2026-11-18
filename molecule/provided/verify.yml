@@ -1,0 +1,190 @@
+---
+# Covers the provided certificate path: what tls_provided.yml wrote, which
+# certificate each name gets over TLS, the HSTS knob, and that the role
+# refuses hostile or mismatched input instead of writing it.
+- name: Verify
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Collect service state
+      ansible.builtin.service_facts:
+
+    - name: Assert httpd is running
+      ansible.builtin.assert:
+        that: ansible_facts.services['httpd.service'].state == 'running'
+        fail_msg: httpd is not running
+
+    - name: Check the installed certificates and keys
+      ansible.builtin.stat:
+        path: "/etc/pki/httpd/{{ item.path }}"
+      loop:
+        - { path: www.example.test.crt, mode: "0644" }
+        - { path: www.example.test.key, mode: "0600" }
+        - { path: app.example.test.crt, mode: "0644" }
+        - { path: app.example.test.key, mode: "0600" }
+      loop_control:
+        label: "{{ item.path }}"
+      register: files
+
+    - name: Assert the keys are 0600 and the certificates are 0644
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.mode == item.item.mode
+        fail_msg: "{{ item.item.path }} is {{ item.stat.mode | default('missing') }}, expected {{ item.item.mode }}"
+        quiet: true
+      loop: "{{ files.results }}"
+      loop_control:
+        label: "{{ item.item.path }}"
+
+    - name: Check the default certificate links
+      ansible.builtin.stat:
+        path: "{{ item.path }}"
+      loop:
+        - { path: /etc/pki/httpd/server.crt, src: /etc/pki/httpd/www.example.test.crt }
+        - { path: /etc/pki/httpd/server.key, src: /etc/pki/httpd/www.example.test.key }
+      loop_control:
+        label: "{{ item.path }}"
+      register: links
+
+    # apache_server_name names the www entry, so the default vhost must be
+    # pointed at it through the stable apache_tls_*_path names.
+    - name: Assert the default certificate links point at the www entry
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.lnk_target == item.item.src
+        fail_msg: "{{ item.item.path }} links to {{ item.stat.lnk_target | default('nothing') }}, expected {{ item.item.src }}"
+        quiet: true
+      loop: "{{ links.results }}"
+      loop_control:
+        label: "{{ item.item.path }}"
+
+    - name: Write the fixture files the checks below read
+      ansible.builtin.copy:
+        dest: "{{ item.dest }}"
+        content: "{{ item.content }}"
+        mode: "0644"
+      loop:
+        - { dest: /tmp/molecule-ca.crt, content: "{{ molecule_test_ca }}" }
+        - { dest: /tmp/molecule-www.crt, content: "{{ molecule_cert_www }}" }
+        - { dest: /tmp/molecule-app.crt, content: "{{ molecule_cert_app }}" }
+      loop_control:
+        label: "{{ item.dest }}"
+      changed_when: false
+
+    - name: The app vhost answers with the app certificate  # noqa: command-instead-of-module
+      ansible.builtin.include_tasks: tasks/served_cert.yml
+      vars:
+        sni: app.example.test
+        file: /tmp/molecule-app.crt
+
+    - name: The default vhost answers with the www certificate  # noqa: command-instead-of-module
+      ansible.builtin.include_tasks: tasks/served_cert.yml
+      vars:
+        sni: www.example.test
+        file: /tmp/molecule-www.crt
+
+    # Names no vhost claims must still land on the default vhost's certificate.
+    - name: Unclaimed names answer with the www certificate  # noqa: command-instead-of-module
+      ansible.builtin.include_tasks: tasks/served_cert.yml
+      vars:
+        sni: other.example.test
+        file: /tmp/molecule-www.crt
+
+    - name: Both names chain-verify against the fixture CA  # noqa: command-instead-of-module
+      ansible.builtin.command: >-
+        curl -sS --cacert /tmp/molecule-ca.crt --resolve {{ item }}:443:127.0.0.1
+        https://{{ item }}/
+      loop: [www.example.test, app.example.test]
+      register: ca_ok
+      changed_when: false
+      failed_when: ca_ok.rc != 0
+
+    - name: The app page is served over TLS  # noqa: command-instead-of-module
+      ansible.builtin.command: >-
+        curl -sS --cacert /tmp/molecule-ca.crt --resolve app.example.test:443:127.0.0.1
+        https://app.example.test/
+      register: page
+      changed_when: false
+      failed_when: page.rc != 0 or page.stdout != 'app-ok'
+
+    # The scenario sets apache_hsts_include_subdomains: false.
+    - name: The HSTS header omits includeSubDomains  # noqa: command-instead-of-module
+      ansible.builtin.command: >-
+        curl -sSI --cacert /tmp/molecule-ca.crt --resolve app.example.test:443:127.0.0.1
+        https://app.example.test/
+      register: hsts
+      changed_when: false
+      failed_when: >-
+        hsts.rc != 0
+        or 'max-age=31536000' not in hsts.stdout
+        or 'includeSubDomains' in hsts.stdout
+
+    # -------------------------------------------------------------------------
+    # Rejections: the role's refusal is the point. Facts first because the
+    # role's assert needs the distribution facts. Each case resets the other
+    # inputs so the role can only fail for the reason under test.
+    # -------------------------------------------------------------------------
+    - name: Gather facts for the role reruns
+      ansible.builtin.setup:
+
+    - name: Reject a certificate name that would escape the TLS directory
+      block:
+        - name: Set a certificate with a path-traversal name
+          ansible.builtin.set_fact:
+            ssl_certificates:
+              - name: ../escape
+                certificate:
+                  content: "{{ molecule_cert_www }}"
+                key:
+                  content: "{{ molecule_key_www }}"
+
+        - name: Run the role expecting the name rejection
+          ansible.builtin.include_tasks: tasks/expect_failure.yml
+          vars:
+            expected: unique name that is safe
+
+    - name: Reject a key that is not the certificate's key
+      block:
+        - name: Pair the www certificate with the app key
+          ansible.builtin.set_fact:
+            ssl_certificates:
+              - name: www.example.test
+                certificate:
+                  content: "{{ molecule_cert_www }}"
+                key:
+                  content: "{{ molecule_key_app }}"
+
+        - name: Run the role expecting the pairing rejection
+          ansible.builtin.include_tasks: tasks/expect_failure.yml
+          vars:
+            expected: does not match the certificate
+
+    - name: Reject a vhost name that would land broken in a log file name
+      block:
+        - name: Restore the valid certificates and break the vhost name
+          ansible.builtin.set_fact:
+            ssl_certificates: "{{ molecule_ssl_valid }}"
+            apache_vhosts:
+              - server_name: bad name
+                document_root: /srv/app
+
+        - name: Run the role expecting the server_name rejection
+          ansible.builtin.include_tasks: tasks/expect_failure.yml
+          vars:
+            expected: unique server_name that is safe
+
+    - name: Reject a snippet name that would escape /etc/httpd/conf.d
+      block:
+        - name: Restore the valid vhosts and break the snippet name
+          ansible.builtin.set_fact:
+            apache_vhosts: "{{ molecule_vhosts_valid }}"
+            apache_conf_snippets:
+              - name: ../../etc/cron.d/evil
+                content: ""
+
+        - name: Run the role expecting the snippet rejection
+          ansible.builtin.include_tasks: tasks/expect_failure.yml
+          vars:
+            expected: apache_conf_snippets needs a name

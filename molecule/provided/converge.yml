@@ -1,0 +1,9 @@
+---
+# All role inputs for this scenario live in inventory/group_vars/all.yml so
+# converge.yml and verify.yml run the same configuration.
+- name: Converge
+  hosts: all
+  tasks:
+    - name: Include the role
+      ansible.builtin.include_role:
+        name: ansible-role-apache

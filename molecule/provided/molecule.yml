@@ -1,0 +1,67 @@
+---
+# The "provided" certificate path on the same two lab VMs as the default
+# scenario (EL9 + EL10, molecule-proxmox driver, connection secrets live only
+# on the control machine). Converge runs the role with apache_tls_source:
+# provided and the throwaway fixtures in inventory/group_vars/all.yml, which
+# covers tasks/tls_provided.yml (key/certificate pairing, 0600 key files,
+# default-certificate symlinks), the provided branches of tasks/assert.yml,
+# per-name vhost certificate selection and HSTS without includeSubDomains.
+# The fixtures are test-only and committed in plain text on purpose — the
+# scenario needs no vault password.
+#
+# Run on the lab's molecule control machine:
+#   /root/labnet/mlab test -s provided             # parallel-safe, recommended
+#   molecule test -s provided                      # pinned band
+role_name_check: 1
+
+dependency:
+  name: galaxy
+  enabled: false        # collections preinstalled on the control machine
+prerun: false
+
+driver:
+  name: molecule-proxmox
+  options:
+    proxmox_secrets: ${LAB_PROXMOX_SECRETS:-/root/.config/molecule/proxmox-secrets.yml}
+    node: ${LAB_NODE:-galactica}
+    validate_certs: true    # galactica serves a valid Let's Encrypt cert (ACME) on its FQDN
+    ssh_user: ${LAB_SSH_USER:-labadmin}
+    ssh_identity_file: ${LAB_SSH_KEY:-/root/.ssh/id_ed25519}
+    full: ${LAB_FULL:-true}
+    pool: ${LAB_POOL:-testlab}
+    timeout: ${LAB_TIMEOUT:-300}
+
+platforms:
+  - name: apache-provided-el9
+    template_name: ${LAB_TEMPLATE_EL9:-template-alma9}
+    newid: ${LAB_VMID_0:-9212}
+
+  - name: apache-provided-el10
+    template_name: ${LAB_TEMPLATE_EL10:-template-alma10}
+    newid: ${LAB_VMID_1:-9213}
+
+provisioner:
+  name: ansible
+  env:
+    ANSIBLE_ROLES_PATH: "${MOLECULE_PROJECT_DIRECTORY}/..:/root/.ansible/roles"
+  # Molecule rebuilds an ephemeral inventory each run and reads a scenario's
+  # own inventory/ directory only through links (lab standard:
+  # molecule-labnet/README.md). Inline provisioner group_vars are skipped
+  # once links are set, which is why ansible_become lives in all.yml itself.
+  inventory:
+    links:
+      group_vars: inventory/group_vars/
+
+verifier:
+  name: ansible
+
+scenario:
+  test_sequence:
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - destroy

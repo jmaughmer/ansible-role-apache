@@ -1,0 +1,204 @@
+---
+# Test data only: throwaway certificates (valid 100 years) from a throwaway CA
+# generated with openssl on 2026-11-18. The keys are committed in plain text ON
+# PURPOSE: this CA signs nothing real, and vaulting these keys is what made the
+# old scenario keep a vault password file inside the repo. The scenario runs
+# with no vault password at all (see README "Testing").
+
+# The driver's SSH lands as a sudo user (unlike a container's root); with a
+# links-based inventory molecule skips inline provisioner group_vars, so this
+# has to live here (lab standard: molecule-labnet/README.md).
+ansible_become: true
+
+molecule_test_ca: |
+  -----BEGIN CERTIFICATE-----
+  MIIEKTCCApGgAwIBAgIUEnMXo+xoDfUuyR1s0AmtCwsWJKQwDQYJKoZIhvcNAQEL
+  BQAwGzEZMBcGA1UEAwwQTW9sZWN1bGUgVGVzdCBDQTAgFw0yNjExMTgyMDExNTVa
+  GA8yMTI2MTAyNTIwMTE1NVowGzEZMBcGA1UEAwwQTW9sZWN1bGUgVGVzdCBDQTCC
+  AaIwDQYJKoZIhvcNAQEBBQADggGPADCCAYoCggGBAOZNJqKI/g/kFw0iInIJBq7m
+  F2j44wjYykT1jEEVwz9AtPkW27aJke1LhKAGVPr17fcyM07zwyXjY1lAS0X0GtVL
+  9BYODv34YD9n9R7ICip8uEgoSFQZqfk09WKA7n6ZW3pIuiYwuqsmmTJ4Rg/i60+t
+  yPvufta+sh+6axFua9HTy0IGeR1UZbs4fGr9+4vNRoV+VArpn8M6UVgMsmH9+t7F
+  C4y1GlDg09mEnwSNjvczYIMoH3YFsKcHGo3ZohvQEcak0ATQuVlR5VBtHAUGCtnc
+  IbFCHIX9sB3wC5p/D4tafYNiORQyHa+irDC24PLO0bAi0AAfILRwBjaOjRWyN/I5
+  6cf5fuIRaiI0UsMtb3vcDpdWm7UOQu+Y36UKjsy9RXSOm/4jEDeVRaRwEwdPLHwB
+  VytVVGO2Lv9Mb/Gs5rC2jwBD0ze6TZOCeSz/4DnNeDr+ZI9KdALNQCyFqCKR0Lt5
+  MpaqBHm3JblD1UBRDKr1QNQMEB5oGhGZSOZkrbJgpQIDAQABo2MwYTAdBgNVHQ4E
+  FgQUb+C2+yE3r9vGHtzALrmdHy5mE2cwHwYDVR0jBBgwFoAUb+C2+yE3r9vGHtzA
+  LrmdHy5mE2cwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwDQYJKoZI
+  hvcNAQELBQADggGBAFDE6cRL40slZQXMGRvdEk+S18PuryIBziQLYvxo2/mMR2Gm
+  GvHawRSjCsaFH3vaD61nirWZCZSeWCKwlAYflDoPn0YV++GEdAuW5+bvaGiD5yJl
+  zSpmKk/bqgznwcPZD4XkN6HbhV0uDmxPI1Pbl7WhvYVXoJhJVFs5tjRNIZSZnpYE
+  v0VbJEQ/ugLNu/5Mi3MEuEqlI+SH5sbxn12n6uxb+q9qnGIjoQOI6I9vRx+b6h05
+  +UGrZzVV/nskbJNXXRqqr3eoxpWJHcH1QwJfZ4iSNvUr4BVVfHJV6nSnb3Y6aQ0N
+  fAcW+uok1WAy+aDJ29YMFsPLqYZqjScWdRcQ/s14EGeF0/EP3Op70MbAkOEJYk3i
+  dkANLWZjRYQefCorzhTyM4BjYIFnhbwAKTzxNBvr5yORwpuUD1WEHjJ5H7wLdJ/0
+  V8WJ7hR3vWAy9ESqmGsO3sEZJ8u26Atx7OhnTXl166iW66SmHcu18Chct79lIJpn
+  pHMTUUyc6jAdqnxmqw==
+  -----END CERTIFICATE-----
+molecule_cert_www: |
+  -----BEGIN CERTIFICATE-----
+  MIIEWjCCAsKgAwIBAgIURHIWrjVvT62nIePPXBxfK8CkkwswDQYJKoZIhvcNAQEL
+  BQAwGzEZMBcGA1UEAwwQTW9sZWN1bGUgVGVzdCBDQTAgFw0yNjExMTgyMDExNTVa
+  GA8yMTI2MTAyNTIwMTE1NVowGzEZMBcGA1UEAwwQd3d3LmV4YW1wbGUudGVzdDCC
+  AaIwDQYJKoZIhvcNAQEBBQADggGPADCCAYoCggGBAKnAAmbSt8B/NWvUMDnaO9gX
+  Nf9LwOmsT66JBauOX6W+g97wGicqG1C6KRNIM1uJm9rVJKm/nw+WHD7iVVrimLIj
+  xuvVa6wXD0+FXvapZHdHVAFYnOuT3AU4IMgep1AsGWXthc5bmydEnvncf3aRllI9
+  DlTjg6vajnWJ+wWb/QGU0TGe7htDwnYc/unrzlWhRRnjTJFJTIMcrUTna44B97ye
+  TT5pJ0k4NL0tQhxKEs3P/gZiRAZenH+LpNorfJqoaL9QjVt3lgR9ls0nuLhc2XfC
+  AAtUWFKv6msxkOjNFNc3hF4isRR9fYP0utaiD70kzLLGV0sY2h2CMoxfRztNVwtt
+  RNBKQQHc9lhaXcxvB2ctq6N+Nl9nomfsrPIY4p7eyZ7q7RL6z68Ku2vqltVcA96/
+  m3VdVKRnwbq4os2beJVFNu8wy7/D0Invob/Dl+wq9oly657qrCdEEKu4wUb1rjta
+  y7ZPBNqI8I9CjUxZpZbRyL9Fn2/QTu+k+DwIKRqvnwIDAQABo4GTMIGQMAwGA1Ud
+  EwEB/wQCMAAwDgYDVR0PAQH/BAQDAgWgMBMGA1UdJQQMMAoGCCsGAQUFBwMBMBsG
+  A1UdEQQUMBKCEHd3dy5leGFtcGxlLnRlc3QwHQYDVR0OBBYEFLvJ2JX7x3Jhmbs/
+  fbfVauOFJJpxMB8GA1UdIwQYMBaAFG/gtvshN6/bxh7cwC65nR8uZhNnMA0GCSqG
+  SIb3DQEBCwUAA4IBgQAi+L9O77jzOJN3awBR18ntPcYGJPMwGtxpGn03ZMvV8mSL
+  w/Lz4GswCBMWOIwjYhV/Le3JbsPFFNfvxAjNkxtkLoasUW83xg32n0fsWjdMRhco
+  v7q4gkWgDJ1p2ZJrUdJaFeHnqog27MYM97UAvOE3Q6q3fNWcgrpy9djgeO5/UIgr
+  WcjfQmTrwy0O+2Ntl2tmSFzg+a6dHLob5YhzqUQR8Chjm4woYbW8GosOF3QanmbR
+  MbpuCf0r3FOqpHHbpQktFIr8kx9Udprf0uy3oJWCwkuO4DfJmWq4shgmZI+7B1lz
+  ut+7BJq41pVo0tckqInQSkfbbFyIUZej4rs+rTGIvqDevCT0sETcco4fgdUXU9hx
+  +czbSg+K9sUBuw4GsFDz5cZSR3IIpjCKJ9s4jRggxze+hF7Ys2ggI3qYFd+QNYAc
+  BsTcfX1RQOHVTgUhNMmLgqBbeO3UV7LWpOJEt74KadWReMCKwTT0r+KyUAUuI7P8
+  QDhWzmFZsPiXz2ORi/U=
+  -----END CERTIFICATE-----
+molecule_key_www: |
+  -----BEGIN PRIVATE KEY-----
+  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
+  k/YXbytNjN0/oXFRP+DNCg==
+  -----END PRIVATE KEY-----
+molecule_cert_app: |
+  -----BEGIN CERTIFICATE-----
+  MIIEWjCCAsKgAwIBAgIUBxqYu/p0AjCJydY/qrPb2fjbOncwDQYJKoZIhvcNAQEL
+  BQAwGzEZMBcGA1UEAwwQTW9sZWN1bGUgVGVzdCBDQTAgFw0yNjExMTgyMDExNTVa
+  GA8yMTI2MTAyNTIwMTE1NVowGzEZMBcGA1UEAwwQYXBwLmV4YW1wbGUudGVzdDCC
+  AaIwDQYJKoZIhvcNAQEBBQADggGPADCCAYoCggGBAN5iE1SO9y4Nz7guGQqxq6BC
+  1RPYESEN+2uerC9NZswhQ0HY/U5WIGWdslJ4ReXwg80a4U15uH987V2DeLGR//BE
+  eh/pADpfyN9H9yE3MiqU+H31O/pGYCFQoHqe9k1Onzl/8qk8jC7hHepeUI/qCP58
+  lrAGV4zrVeavIKBm95AikmDSRxJLTOeRxw6wMzwQtkhGtE3kjM1Zky2IWI2TeQT4
+  D5qOKj+dKzkdiem+oJGgKU55smURlsjq/nMrgZMLJnAo1W4YEv7qdPz/z6rbUrIS
+  PgWGCoUYKJjTtxV6bVNd7dcI56gjxk1CFA2epgffXVEK5vyDLPoOUaDmQqAderIQ
+  oAVE8l0J1tulZCfjmoAsthgYoTUZpfpmVUdXr3ZhYW1SiVFdkxrX1Njho/oYgv+r
+  qwAzuPq6Ew+6DC3DMiENb2v99hHNYd3X9Ti2L5kMcYGKRuQcRxrapk1KNIL0tNUH
+  /aSW9GIgUJURiXSpOJSoTZ1P4yFtIAZqlflSnYGzowIDAQABo4GTMIGQMAwGA1Ud
+  EwEB/wQCMAAwDgYDVR0PAQH/BAQDAgWgMBMGA1UdJQQMMAoGCCsGAQUFBwMBMBsG
+  A1UdEQQUMBKCEGFwcC5leGFtcGxlLnRlc3QwHQYDVR0OBBYEFGmwzR9MGMdpnbPa
+  ecN+iQn8mMcGMB8GA1UdIwQYMBaAFG/gtvshN6/bxh7cwC65nR8uZhNnMA0GCSqG
+  SIb3DQEBCwUAA4IBgQAoAcprdxMKrD1LOz43K8HOpoz5wu3xd4Xz+LqBzRvRacsb
+  zNHcC7/9xDQU9NNQ+uat96gUZ76JAjKyUcJp3rwdkmR1CtECdoBB2T+gsPtbn212
+  CsfOuKK/mvpkcWqJ4HKmVnL95Fa5hN5vvmk4oOt/ImbA2bbEoDrBeuZaHVrt3gWh
+  Df+4ncLijAOsrbe00FSROSp/7CCVksbRuB1U1ps4B/WuUZEZy7FCnzR0C3Yp3VAi
+  lIK8ZJdfuHd/acHg4Xtv8PYvdpMLeud5VBd+ZpBSkVI7QNpVLUjwIFvLY0kUbflr
+  FpHI51ZU6lnXwltIrnaQjBgGGWf+bOAwwyQtDkpYV8J/Z5bmd6/eDwv0Lhirvda9
+  JlmAR19MHolHC7PpAIPgUOgYWQAJJ/QzUIgHn+nsVpL0qzPZni+lcR/WoiiqnYdl
+  /5ux6i8emgIl8wGzpbmBKtgTa1FuH+NR3oHVQLOrQ3opd9d8Gfsrx7Vnp2yXhwcz
+  2wianm4qGYk2RYqZJqM=
+  -----END CERTIFICATE-----
+molecule_key_app: |
+  -----BEGIN PRIVATE KEY-----
+  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
+  XHfyeqvPHDrzsGnDqiBuIwsH
+  -----END PRIVATE KEY-----
+# Baselines the verify run restores between the rejection cases, so each case
+# fails only for its own reason.
+molecule_ssl_valid:
+  - name: www.example.test
+    certificate:
+      content: "{{ molecule_cert_www }}"
+    key:
+      content: "{{ molecule_key_www }}"
+  - name: app.example.test
+    certificate:
+      content: "{{ molecule_cert_app }}"
+    key:
+      content: "{{ molecule_key_app }}"
+molecule_vhosts_valid:
+  - server_name: app.example.test
+    document_root: /srv/app
+    ssl_certificate: app.example.test
+
+# ---------------------------------------------------------------------------
+# Role inputs
+# ---------------------------------------------------------------------------
+apache_tls_source: provided
+apache_server_name: www.example.test
+# www.example.test matches the first ssl_certificates entry, so the default
+# vhost gets it through the apache_tls_*_path symlinks. app.example.test is a
+# named vhost picking its certificate by ssl_certificate name.
+apache_vhosts: "{{ molecule_vhosts_valid }}"
+ssl_certificates: "{{ molecule_ssl_valid }}"
+# Covers the knob's false path; verify asserts the served header omits it.
+apache_hsts_include_subdomains: false

@@ -146,7 +146,7 @@ Its `ServerName` is `default.invalid`, a reserved name, so other vhosts can use 
 | Disabled modules | `apache_disabled_modules` | autoindex, userdir, info, status, dav*, cgi*, lua |
 | Blanked package confs | `apache_blank_confs` | welcome, autoindex, userdir |
 | Security headers | `apache_security_headers` | nosniff, SAMEORIGIN, referrer and permissions policies |
-| HSTS | `apache_hsts_max_age` | 1 year |
+| HSTS | `apache_hsts_max_age`, `apache_hsts_include_subdomains` | 1 year, includeSubDomains on |
 | TLS protocols | `apache_tls_protocol` | `all -SSLv3 -TLSv1 -TLSv1.1` |
 | Cookie flags | `apache_cookie_flags` | adds `HttpOnly` and `Secure` |
 
@@ -192,26 +192,38 @@ molecule test                                   # EL9 + EL10
 LAB_TEMPLATE_EL9=template-alma8 molecule test   # move one box to EL8
 ```
 
+The `provided` scenario runs the same pair with `apache_tls_source: provided` and a
+throwaway certificate fixture: `molecule test -s provided`. The fixture's CA signs
+nothing real, so its keys — and that CA — are committed in plain text on purpose and
+the scenario needs no vault password; vaulting them is what once put a vault password
+file in this repo, which is why [`inventory/group_vars/all.yml`](molecule/provided/inventory/group_vars/all.yml)
+carries a header saying so. That scenario covers `tasks/tls_provided.yml` (key pairing,
+0600 key files, default-certificate links), per-name vhost certificates, HSTS without
+`includeSubDomains`, and the role's refusals: a path-traversal certificate name, a
+mismatched key/certificate pair, a bad vhost name, and a snippet name that would
+escape `conf.d`.
+
 Tests run on the lab's molecule control machine: `molecule`, `molecule-proxmox` and the
 role's collections are preinstalled there, and the driver's connection secrets and SSH key
 live only in its own config files. Nothing lab-specific is in this repo beyond the fleet
-template names and the default VMID band (9210–9211); hosts, tokens and subnets never
-leave the control machine. The Test Lab project's `molecule-labnet/` directory documents
+template names and the default VMID bands (9210–9211 for `default`, 9212–9213 for
+`provided`); hosts, tokens and subnets never leave the control machine. The Test Lab
+project's `molecule-labnet/` directory documents
 the lab itself. For several runs of this repo at once, use the lab's `mlab` wrapper, which
 claims a free VMID band per run:
 
 ```bash
 /root/labnet/mlab test -s default               # parallel-safe run on the control machine
+/root/labnet/mlab test -s provided
 ```
 
 Lint with `yamllint .` and `ansible-lint` (configured by [`.yamllint`](.yamllint) and
 [`.ansible-lint`](.ansible-lint)). There is no CI; run the lint and Molecule from the
 control machine.
 
-Not covered by the scenario: the supplied-certificate paths with vaulted test keys and the
-Let's Encrypt paths against a Pebble test CA (the removed `provided`/`letsencrypt`
-container scenarios), and running the EL8 target on the older ansible-core those scenarios
-pinned. Let's Encrypt staging can be exercised manually with
+Not covered by the scenarios: the Let's Encrypt paths against a Pebble test CA (the
+removed `letsencrypt` container scenario), and running the EL8 target on the older
+ansible-core those scenarios pinned. Let's Encrypt staging can be exercised manually with
 `apache_letsencrypt_server` pointed at the staging directory.
 
 ## License

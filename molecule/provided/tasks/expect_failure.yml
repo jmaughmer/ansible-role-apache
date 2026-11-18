@@ -1,0 +1,20 @@
+---
+# Run the role with the settings the caller passes in vars, and check it fails
+# with the message in "expected". The role's rejection is the point, so it is
+# rescued here rather than ending the run. Match against msg only: the whole
+# result dict also echoes the assert's own evaluation strings, which quote
+# variable names and would let the wrong rejection pass.
+- name: Check the role refuses this configuration
+  block:
+    - name: Run the role
+      ansible.builtin.include_role:
+        name: ansible-role-apache
+
+    - name: The role should have failed already
+      ansible.builtin.fail:
+        msg: The role accepted this configuration.
+  rescue:
+    - name: Check it failed for the right reason
+      ansible.builtin.assert:
+        that: expected in (ansible_failed_result.msg | default(''))
+        fail_msg: "Expected the failure to mention: {{ expected }} (got: {{ ansible_failed_result.msg | default(ansible_failed_result) }})"
