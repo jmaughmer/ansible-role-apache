@@ -27,6 +27,33 @@
       check_mode: false
       when: (apache_fapolicyd_trusted_dirs + apache_fapolicyd_trusted_files) | length > 0
 
+    # The trust file format is space-delimited, so files with spaces in their
+    # names cannot be listed. Say which ones were skipped instead of leaving
+    # the operator to find out from denials.
+    - name: Look for files whose names contain spaces
+      ansible.builtin.shell: |
+        set -o pipefail
+        find {{ (apache_fapolicyd_trusted_dirs + apache_fapolicyd_trusted_files) | map('quote') | join(' ') }} \
+          -type f -name '* *' -printf '%p\n' 2>/dev/null | head -n 20
+      args:
+        executable: /bin/bash
+      register: __apache_fapolicyd_spaced
+      changed_when: false
+      check_mode: false
+      # With many space-named files, head closes the pipe and find dies of
+      # SIGPIPE (141 under pipefail) after the warning is already complete.
+      failed_when: __apache_fapolicyd_spaced.rc not in [0, 141]
+      when: (apache_fapolicyd_trusted_dirs + apache_fapolicyd_trusted_files) | length > 0
+
+    - name: Warn about files that could not be trusted
+      ansible.builtin.debug:
+        msg: >-
+          The fapolicyd trust file format cannot list names with spaces, so these
+          files under {{ (apache_fapolicyd_trusted_dirs + apache_fapolicyd_trusted_files) | join(', ') }}
+          are NOT trusted (up to 20 shown); rename them without spaces:
+          {{ __apache_fapolicyd_spaced.stdout_lines }}
+      when: __apache_fapolicyd_spaced.stdout_lines | default([]) | length > 0
+
     - name: Write the fapolicyd trust file
       ansible.builtin.copy:
         dest: "/etc/fapolicyd/trust.d/{{ apache_fapolicyd_trust_file }}"

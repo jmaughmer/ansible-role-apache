@@ -25,10 +25,18 @@
   listen: restart php-fpm
 
 - name: Update fapolicyd trust
-  ansible.builtin.command: fapolicyd-cli --update
+  ansible.builtin.shell: |
+    set -o pipefail
+    # fapolicyd reads trust.d on start, so there is nothing to update while it
+    # is not running (fapolicyd-cli would only error). A failure while it runs
+    # is real — stale hashes, malformed trust file — and must fail the run
+    # here, not surface later as unexplained 403s from php-fpm.
+    if systemctl is-active --quiet fapolicyd; then
+      fapolicyd-cli --update
+    fi
+  args:
+    executable: /bin/bash
   changed_when: true
-  # fapolicyd reads trust.d on start, so there is nothing to do while stopped.
-  failed_when: false
 
 - name: Warn about crypto policy reboot
   ansible.builtin.debug:
