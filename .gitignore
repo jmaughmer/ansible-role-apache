@@ -3,3 +3,8 @@
 __pycache__/
 .molecule/
 .ansible/
+# Private Proxmox-lab scenario. Never committed (public repo).
+molecule/vm/
+# Vault secrets belong outside this repo, not beside the ciphertext they open.
+*vault-password*
+*vault_pass*

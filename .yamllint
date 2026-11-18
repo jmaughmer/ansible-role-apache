@@ -19,4 +19,3 @@ rules:
 ignore: |
   .git/
   .cache/
-  molecule/provided/vars/vault.yml
