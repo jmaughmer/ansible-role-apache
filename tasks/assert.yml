@@ -68,7 +68,11 @@
     that:
       - apache_vhosts | selectattr('server_name', 'undefined') | list | length == 0
       - apache_vhosts | map(attribute='server_name') | list | unique | length == apache_vhosts | length
-    fail_msg: Every entry in apache_vhosts needs a unique server_name.
+      - apache_vhosts | map(attribute='server_name', default='') | reject('match', __apache_file_name_pattern) | list | length == 0
+    fail_msg: >-
+      Every entry in apache_vhosts needs a unique server_name that is safe as a file
+      name, because it goes into the vhost's log file names (letters, digits, and
+      . _ - *; no slashes, spaces or "..").
     quiet: true
 
 - name: Assert virtual host certificates
@@ -83,9 +87,23 @@
 
 - name: Assert configuration snippets
   ansible.builtin.assert:
-    that: apache_conf_snippets | selectattr('name', 'undefined') | list | length == 0
-    fail_msg: Every entry in apache_conf_snippets needs a name.
+    that:
+      - apache_conf_snippets | selectattr('name', 'undefined') | list | length == 0
+      - apache_conf_snippets | map(attribute='name', default='') | reject('match', __apache_file_name_pattern) | list | length == 0
+    fail_msg: >-
+      Every entry in apache_conf_snippets needs a name that is safe as a file name,
+      so it stays inside /etc/httpd/conf.d (letters, digits, and . _ - *; no slashes,
+      spaces or "..").
     quiet: true
+
+- name: Assert the fapolicyd trust file name
+  ansible.builtin.assert:
+    that: apache_fapolicyd_trust_file is match(__apache_file_name_pattern)
+    fail_msg: >-
+      apache_fapolicyd_trust_file must be safe as a file name, so it stays inside
+      /etc/fapolicyd/trust.d (letters, digits, and . _ - *; no slashes, spaces or "..").
+    quiet: true
+  when: apache_fapolicyd_manage | bool
 
 - name: Assert FIPS mode is enabled
   ansible.builtin.assert:

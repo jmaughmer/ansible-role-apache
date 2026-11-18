@@ -126,6 +126,8 @@ The default TLS virtual host serves `apache_document_root` for every name no oth
 
 Another role in the same play can write its own files and `notify: reload httpd` (or `restart httpd`, `restart php-fpm`). The role runs `httpd -t` before starting or reloading.
 
+Names are checked before anything is written: a snippet `name` becomes `/etc/httpd/conf.d/<name>.conf` and a vhost `server_name` goes into that vhost's log file names, so both must be letters, digits and `. _ - *` — no slashes, spaces or `..`.
+
 The default vhost is the first `*:443` vhost Apache reads. A file in `conf.d` that sorts before `ssl.conf` and defines its own `*:443` vhost will take that place.
 
 Its `ServerName` is `default.invalid`, a reserved name, so other vhosts can use any real name, including `apache_server_name`. mod_ssl logs an `AH01909` warning about this at startup because the certificate can't list that name. You can ignore it.
