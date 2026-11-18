@@ -18,7 +18,7 @@ Used by [ansible-role-phpmyadmin](https://github.com/jmaughmer/ansible-role-phpm
 
 - Ansible core 2.15 or newer. RHEL 8 targets need ansible-core 2.16 or older on the controller, because 2.17+ no longer supports EL8's Python 3.6.
 - Collections from `requirements.yml`: `ansible.posix`, `community.general` and `community.crypto`.
-- Packages come from AppStream, except certbot, which comes from EPEL. The role only enables EPEL with `apache_tls_source: letsencrypt` (`apache_epel_manage: false` if you already have EPEL or a mirror of it). RHEL hosts may also need the CodeReady Builder repository for certbot's dependencies.
+- Packages come from AppStream, except certbot, which comes from EPEL. The role only enables EPEL with `apache_tls_source: letsencrypt`, and it installs the signed `epel-release` package: on RHEL that ships in `extras` (enable that repo first), on the other RHEL-compatible distributions it ships in the main repos. Set `apache_epel_manage: false` if you already have EPEL or a mirror of it. RHEL hosts may also need the CodeReady Builder repository for certbot's dependencies.
 
 ## Quick start
 

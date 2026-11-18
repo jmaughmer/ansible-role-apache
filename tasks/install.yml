@@ -24,23 +24,17 @@
       changed_when: true
 
 # Only certbot needs EPEL; everything else in this role comes from AppStream.
-- name: Enable EPEL for certbot
+# epel-release is a signed package everywhere: RHEL ships it in extras (enable
+# that repo first), CentOS Stream and clones ship it in their main repos. A
+# bare URL has no repo to resolve a gpgkey from, so it could only be installed
+# with disable_gpg_check — never do that here.
+- name: Install epel-release
+  ansible.builtin.dnf:
+    name: epel-release
+    state: present
   when:
     - apache_tls_source == 'letsencrypt'
     - apache_epel_manage | bool
-  block:
-    - name: Install epel-release
-      ansible.builtin.dnf:
-        name: "https://dl.fedoraproject.org/pub/epel/epel-release-latest-{{ ansible_facts['distribution_major_version'] }}.noarch.rpm"
-        state: present
-        disable_gpg_check: true
-      when: ansible_facts['distribution'] == 'RedHat'
-
-    - name: Install epel-release from extras
-      ansible.builtin.dnf:
-        name: epel-release
-        state: present
-      when: ansible_facts['distribution'] != 'RedHat'
 
 - name: Install Apache packages
   ansible.builtin.dnf:
