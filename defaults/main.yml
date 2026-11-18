@@ -76,6 +76,10 @@ apache_security_headers:
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: "geolocation=(), microphone=(), camera=()"
 apache_hsts_max_age: 31536000
+# Add includeSubDomains to the HSTS header. One-way door in browsers: while
+# max-age lasts, every subdomain must serve TLS, so set false if any subdomain
+# is still plain HTTP.
+apache_hsts_include_subdomains: true
 # Add HttpOnly and Secure to cookies that lack them.
 apache_cookie_flags: "{{ apache_stig_enabled }}"
 

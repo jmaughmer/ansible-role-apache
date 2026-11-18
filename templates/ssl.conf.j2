@@ -32,7 +32,7 @@ SSLSessionTickets off
     SSLCertificateKeyFile {{ apache_tls_key_path }}
 
     <IfModule headers_module>
-        Header always set Strict-Transport-Security "max-age={{ apache_hsts_max_age }}; includeSubDomains"
+        Header always set Strict-Transport-Security "max-age={{ apache_hsts_max_age }}{% if apache_hsts_include_subdomains | bool %}; includeSubDomains{% endif %}"
     </IfModule>
 
     # Applications add Alias/Location blocks to this vhost here.

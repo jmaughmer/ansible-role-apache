@@ -17,7 +17,7 @@
     SSLCertificateKeyFile {{ vhost.tls_key_path | default((apache_tls_dir ~ '/' ~ certificate ~ '.key') if certificate else apache_tls_key_path) }}
 
     <IfModule headers_module>
-        Header always set Strict-Transport-Security "max-age={{ apache_hsts_max_age }}; includeSubDomains"
+        Header always set Strict-Transport-Security "max-age={{ apache_hsts_max_age }}{% if apache_hsts_include_subdomains | bool %}; includeSubDomains{% endif %}"
     </IfModule>
 
     <Directory "{{ vhost.document_root | default(apache_document_root) }}">
